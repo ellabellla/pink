@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
+mod tokenizer;
 mod charstream;
+use crate::tokenizer::Tokenizer;
 
 #[wasm_bindgen]
 extern {
@@ -8,4 +10,6 @@ extern {
 
 #[wasm_bindgen]
 pub fn compile(input: &str) {
+    let mut tokenizer = Tokenizer::new(input);
+    tokenizer.next();
 }
