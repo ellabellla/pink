@@ -1,14 +1,20 @@
 use wasm_bindgen::prelude::*;
 mod lexer;
-use crate::lexer::tokenizer::Tokenizer;
+use crate::lexer::*;
 
 #[wasm_bindgen]
-extern {
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
 
+    fn alert(s: &str);
 }
 
 #[wasm_bindgen]
 pub fn compile(input: &str) {
     let mut tokenizer = Tokenizer::new(input);
-    tokenizer.next();
+    
+    while let Some(token) = tokenizer.next() {
+        log(format!("{:?}", token).as_str());
+    }
 }
