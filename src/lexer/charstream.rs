@@ -1,4 +1,3 @@
-
 pub struct CharStream {
     input: Vec<char>,
     index: usize

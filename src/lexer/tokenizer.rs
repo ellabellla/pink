@@ -1,6 +1,6 @@
 use std::convert::identity;
-use crate::charstream::CharStream;
-use crate::token_lookup::*;
+use crate::lexer::charstream::CharStream;
+use crate::lexer::token_lookup::*;
 use queues::*;
 
 pub struct Tokenizer {
