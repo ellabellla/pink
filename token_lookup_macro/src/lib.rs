@@ -177,7 +177,7 @@ fn gen_table(token_data: &Vec<TokenData>, token_idents: &Vec<TokenIdent>, max_st
     
     let mut prev_column_meta: HashMap<char, (usize, usize)> = HashMap::new();    
     let mut prev_column_meta_swap: HashMap<char, (usize, usize)> = HashMap::new();
-    let mut table_entries = proc_macro2::TokenStream::new();  
+    let mut table_entries = vec![];  
     for i in (0..table_map.len()).rev() {
         let mut column_entries = proc_macro2::TokenStream::new();
         let mut index = 0;
@@ -217,13 +217,14 @@ fn gen_table(token_data: &Vec<TokenData>, token_idents: &Vec<TokenIdent>, max_st
                 #column_entries
             ];
         ));
-        table_entries.append_all(quote!(Token_Lookup_Column{column: &#column_ident},));
+        table_entries.push(quote!(Token_Lookup_Column{column: &#column_ident},));
         swap(&mut prev_column_meta_swap, &mut prev_column_meta);
     }
 
+    let table_entries = table_entries.iter().rev();
     stream.append_all(quote!(
         pub const TOKEN_LOOKUP_TABLE: [Token_Lookup_Column; #max_string_size] = [
-            #table_entries
+            #(#table_entries)*
         ];
     ));
 
