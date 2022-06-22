@@ -211,7 +211,7 @@ fn gen_table(token_data: &Vec<TokenData>, token_idents: &Vec<TokenIdent>, max_st
                 column_count += group_count;
             }
         }
-        let column_ident = Ident::new(format!("token_lookup_column_{}", i).as_str(), Span::call_site());
+        let column_ident = Ident::new(format!("TOKEN_LOOKUP_COLUMN_{}", i).as_str(), Span::call_site());
         stream.append_all(quote!(
             pub const #column_ident: [(char, Lookup_Data); #column_count] = [
                 #column_entries
@@ -222,7 +222,7 @@ fn gen_table(token_data: &Vec<TokenData>, token_idents: &Vec<TokenIdent>, max_st
     }
 
     stream.append_all(quote!(
-        pub const token_lookup_table: [Token_Lookup_Column; #max_string_size] = [
+        pub const TOKEN_LOOKUP_TABLE: [Token_Lookup_Column; #max_string_size] = [
             #table_entries
         ];
     ));

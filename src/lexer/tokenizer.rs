@@ -1,4 +1,3 @@
-use std::convert::identity;
 use crate::lexer::charstream::CharStream;
 use crate::lexer::token_lookup::*;
 use queues::*;
@@ -27,6 +26,7 @@ impl Iterator for Tokenizer {
     }
 }
 
+#[allow(dead_code)]
 impl<'a> Tokenizer {
     pub fn new(input: &str) -> Tokenizer {
         Tokenizer{stream: CharStream::new(input), history: queue![], line: 0}
@@ -55,7 +55,7 @@ impl<'a> Tokenizer {
     fn parse_reserved_word(&mut self) -> Option<Token> {
         let mut lookup_column: usize = 0;
         let mut lookup_index: usize = 0;
-        let mut lookup_count: usize = token_lookup_table[0].column.len();
+        let mut lookup_count: usize = TOKEN_LOOKUP_TABLE[0].column.len();
 
         let mut last_token = Token::UNDEFINED;
         let mut last_valid_pos = self.stream.pos();
@@ -63,7 +63,7 @@ impl<'a> Tokenizer {
         while let Some(next) = self.stream.next() {
             let mut found = false;
             for i in lookup_index..(lookup_index + lookup_count) {
-                let (character, data) = token_lookup_table[lookup_column].column[i].clone();
+                let (character, data) = TOKEN_LOOKUP_TABLE[lookup_column].column[i].clone();
                 if character == next {
                     found = true;
                     match data {
@@ -86,7 +86,7 @@ impl<'a> Tokenizer {
                     }
                 }
             }
-            if found && lookup_column + 1 < token_lookup_table.len() {
+            if found && lookup_column + 1 < TOKEN_LOOKUP_TABLE.len() {
                 lookup_column += 1;
             } else {
                 self.stream.seek(last_valid_pos);
@@ -169,7 +169,7 @@ impl<'a> Tokenizer {
         let mut data = Vec::new();
 
         let mut found_start = true;
-        for start_character in  token_string_start.chars() {
+        for start_character in  TOKEN_STRING_START.chars() {
             if let Some(character) = self.stream.next() {
                 if character != start_character {
                     found_start = false;
@@ -190,7 +190,7 @@ impl<'a> Tokenizer {
                 self.stream.next();
                 if let Some(character) = self.stream.peek() {
                     let mut found = true;
-                    for (escape, replacement) in token_string_escape {
+                    for (escape, replacement) in TOKEN_STRING_ESCAPE {
                         if escape == character {
                             found = true;
                             data.push(replacement); 
@@ -206,9 +206,9 @@ impl<'a> Tokenizer {
             } else {
                 let mut found_end = false;
                 let start_pos = self.stream.pos();
-                if token_string_end.starts_with(character) {
+                if TOKEN_STRING_END.starts_with(character) {
                     found_end = true;
-                    for end_character in  token_string_end.chars() {
+                    for end_character in  TOKEN_STRING_END.chars() {
                         if let Some(character) = self.stream.next() {
                             if character != end_character {
                                 found_end = false;
@@ -258,26 +258,26 @@ mod tokenizer_test {
     #[test]
     fn test_parse_number() {
         let input = "-0.1";
-        let mut tokeniser = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(-0.1)), tokeniser.parse_number());
+        let mut tokenizer = Tokenizer::new(input);
+        assert_eq!(Some(Token::NUMBER(-0.1)), tokenizer.parse_number());
 
 
         let input = "-.1";
-        let mut tokeniser = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(-0.1)), tokeniser.parse_number());
+        let mut tokenizer = Tokenizer::new(input);
+        assert_eq!(Some(Token::NUMBER(-0.1)), tokenizer.parse_number());
 
 
         let input = ".1";
-        let mut tokeniser = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(0.1)), tokeniser.parse_number());
+        let mut tokenizer = Tokenizer::new(input);
+        assert_eq!(Some(Token::NUMBER(0.1)), tokenizer.parse_number());
 
         let input = "123a";
-        let mut tokeniser = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(123.0)), tokeniser.parse_number());
+        let mut tokenizer = Tokenizer::new(input);
+        assert_eq!(Some(Token::NUMBER(123.0)), tokenizer.parse_number());
 
         let input = "a";
-        let mut tokeniser = Tokenizer::new(input);
-        assert_eq!(None, tokeniser.parse_number());
+        let mut tokenizer = Tokenizer::new(input);
+        assert_eq!(None, tokenizer.parse_number());
     }
 
     #[test]

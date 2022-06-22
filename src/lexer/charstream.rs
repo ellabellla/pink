@@ -3,6 +3,7 @@ pub struct CharStream {
     index: usize
 }
 
+#[allow(dead_code)]
 impl CharStream {
     pub fn new(input: &str) -> CharStream {
         CharStream { input: input.chars().collect(), index: 0 }
@@ -57,19 +58,19 @@ impl Iterator for CharStream {
 mod char_stream_tests {
     use super::CharStream;
 
-    const test_input: &str = stringify!(a test string);
+    const TEST_INPUT: &str = stringify!(a test string);
 
     #[test]
     fn test_next_prev() {
-        let mut stream = CharStream::new(test_input);
+        let mut stream = CharStream::new(TEST_INPUT);
 
-        for char in test_input.chars() {
+        for char in TEST_INPUT.chars() {
             assert_eq!(char, stream.next().unwrap());
         }
 
         assert_eq!(None, stream.next());
         
-        for char in test_input.chars().rev() {
+        for char in TEST_INPUT.chars().rev() {
             assert_eq!(char, stream.prev().unwrap());
         }
 
@@ -78,18 +79,18 @@ mod char_stream_tests {
 
     #[test]
     fn test_peek() {
-        let mut stream = CharStream::new(test_input);
+        let mut stream = CharStream::new(TEST_INPUT);
 
-        for _ in 0..test_input.len() {
+        for _ in 0..TEST_INPUT.len() {
             assert_eq!(stream.peek().unwrap(), stream.next().unwrap());
         }
     }
 
     #[test]
     fn test_seek_pos() {
-        let mut stream = CharStream::new(test_input);
+        let mut stream = CharStream::new(TEST_INPUT);
 
-        for (i, char) in test_input.chars().enumerate() {
+        for (i, char) in TEST_INPUT.chars().enumerate() {
             stream.seek(i);
             assert_eq!(stream.next().unwrap(), char);
         }
