@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 mod tokenizer;
 mod charstream;
+mod token_lookup;
 use crate::tokenizer::Tokenizer;
 
 #[wasm_bindgen]
