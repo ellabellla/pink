@@ -1,19 +1,50 @@
 use token_lookup_macro::token_lookup;
 
 token_lookup!(
+    ("true", TRUE),
+    ("false", FALSE),
+    
+    ("and", AND),
+    ("or", OR),
+    ("xor", XOR),
+    
+    ("@@", PEEK),
+    ("@", POP),
+    ("^", OUTER),
+
+    ("?", IF),
+    ("'", NTH),
+    ("<-", INTO),
+    ("->", EXEC),
+    ("*>", REDUCE_EXEC),
+
+    ("&", CONCAT),
+
+    (":", SET),
+
+    ("!", NOT),
     ("+", ADD),
     ("-", SUB),
     ("*", MUL),
     ("/", DIV),
-
+    ("<", LESS),
+    (">", GREAT),
     ("=", EQU),
-    ("+=", ADD_EQU),
-    ("-=", SUB_EQU),
-    ("*=", MUL_EQU),
-    ("/=", DIV_EQU),
+    ("<=", LESS_EQU),
+    (">=", GREAT_EQU),
+    
+    ("+:", ADD_SET),
+    ("-:", SUB_SET),
+    ("*:", MUL_SET),
+    ("/:", DIV_SET),
 
-    ("->", EXEC),
-    ("-*", REDUCE_EXEC),
+    (".", CHAIN),
+
+    ("_", NOTHING),
+
+    ("|", FROM).
+    (",", COMMA),
+    
 
     (String, STRING),
     (f64, NUMBER),
