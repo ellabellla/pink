@@ -192,7 +192,7 @@ fn gen_table(token_data: &Vec<TokenData>, token_idents: &Vec<TokenIdent>, max_st
                                 column_entries.append_all(quote!((#char, Lookup_Data::INDEX_TOKEN(#index, #count, Token::#ident)),));
                             },
                             None => {
-                                column_entries.append_all(quote!((#char, Lookup_Data::INDEX(index, count)),));
+                                column_entries.append_all(quote!((#char, Lookup_Data::INDEX(#index, #count)),));
                             }
                         }
                     } else {
