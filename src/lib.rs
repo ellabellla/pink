@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 mod lexer;
+mod vm;
 use crate::lexer::*;
+use crate::vm::*;
 
 #[wasm_bindgen]
 extern "C" {
