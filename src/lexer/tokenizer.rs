@@ -185,7 +185,10 @@ impl<'a> Tokenizer {
         } 
 
         while let Some(character) = self.stream.peek() {
-
+            if !character.is_ascii() {
+                return None
+            }
+            
             if character == '\\' {
                 self.stream.next();
                 if let Some(character) = self.stream.peek() {
@@ -245,8 +248,8 @@ mod tokenizer_test {
 
     #[test]
     fn test_next() {
-        let input = "+ - * / = += -= -> -*";
-        let expected = [Token::ADD, Token::SUB, Token::MUL, Token::DIV, Token:: EQU, Token::ADD_EQU, Token::SUB_EQU, Token::EXEC, Token::REDUCE_EXEC];
+        let input = "+ - * / = += -= -> *>";
+        let expected = [Token::ADD, Token::SUB, Token::MUL, Token::DIV, Token:: EQU, Token::ADD_SET, Token::SUB_SET, Token::EXEC, Token::REDUCE_EXEC];
         let mut tokenizer = Tokenizer::new(input).enumerate();
 
 
