@@ -1,4 +1,4 @@
-use super::{instrs::*, VM, Stack, StackData};
+use super::{instrs::*, VM, StackData};
 
 #[derive(Clone, Copy)]
 pub enum Data {
@@ -6,6 +6,7 @@ pub enum Data {
     NUMBER(f64),
     NOTHING,
 }
+
 
 pub type Expr = Vec<Instr>;
 
@@ -18,11 +19,11 @@ trait ExprImpl {
 
 pub type List = Vec<Expr>;
 
-
 pub type Tuple = Box<[Data]>;
 
 pub trait TupleImpl {
     fn new_tuple(size: usize, vm: &mut VM) -> Tuple;
+    fn new_tuple_inline(data: Vec<Data>) -> Tuple;
 }
 
 impl TupleImpl for Tuple {
@@ -39,6 +40,10 @@ impl TupleImpl for Tuple {
 
         data.into_boxed_slice()
     }
+
+    fn new_tuple_inline(data: Vec<Data>) -> Tuple {
+        data.into_boxed_slice()
+    }
 }
 
 pub struct Matrix {
@@ -52,7 +57,7 @@ impl<'a> Matrix {
         Matrix{memory: Vec::<f64>::with_capacity(size*size).into_boxed_slice(), size, total_size: size*size}
     }
 
-    pub fn get(self, x:usize, y:usize) -> Option<f64> {
+    pub fn get(&self, x:usize, y:usize) -> Option<f64> {
         let index = y*self.size + x;
         if index >= self.total_size {
             None
@@ -61,7 +66,7 @@ impl<'a> Matrix {
         }
     }
 
-    pub fn set(mut self, x:usize, y:usize, number:f64) {
+    pub fn set(&mut self, x:usize, y:usize, number:f64) {
         let index = y*self.size + x;
         if index >= self.total_size {
             return
