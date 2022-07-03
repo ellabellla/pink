@@ -1,19 +1,30 @@
+use core::num;
 use std::cell::Ref;
 
 use super::{Stack, Data, Matrix};
 
 pub enum Reference {
     Stack,
+    Bank(usize),
     Matrix(usize, usize),
     Literal(f64),
+    Tuple(usize),
 }
 
 impl Reference {
-    pub fn to_number(&self, stack:  &mut Stack, matrix: &Matrix) -> Option<f64> {
+    pub fn to_number(&self, index: usize, vm:  &mut VM) -> Option<f64> {
         match self {
-            Reference::Stack => stack.pop().and_then(|data| data.to_number()),
-            Reference::Matrix(x, y) => matrix.get(*x, *y),
+            Reference::Stack => vm.stack.pop().and_then(|data| data.to_number()),
+            Reference::Bank(index) => vm.bank.get(*index).and_then(|num|Some(*num)),
+            Reference::Matrix(x, y) => vm.matrix.get(*x, *y),
             Reference::Literal(num) => Some(*num),
+            Reference::Tuple(tuple_index) => {
+                if let Some(tuple) = vm.tuples.get(*tuple_index) {
+                    tuple.get(index).and_then(|number| Some(*number))
+                } else {
+                    None
+                }
+            }
         }
     }
 }
@@ -37,7 +48,16 @@ pub enum Instr {
 
     Conditional(Reference, Reference, Reference),
 
-    Push(Data)
+    Push(Data),
+
+    Set_Matrix(Reference, Reference, Reference),
+
+    Frame(Reference),
+    Get_Arg(Reference),
+    Set_Arg(Reference, Reference),
+
+    Get_Bank(Reference),
+    Set_Bank(Reference, Reference),
 }
 
 mod instr_ops {
@@ -92,17 +112,29 @@ mod instr_ops {
     pub fn xor(a: f64, b: f64) -> f64 {
         if or(a,b) != 0.0 && and(a,b) == 0.0  { 1.0 } else { 0.0 }
     }
+
+    pub fn conditional(a: f64, b: f64, c: f64) -> f64 {
+        if a != 0.0 { b } else { c }
+    }
 }
 
 pub struct VM {
     instrs: Vec<Instr>,
     stack: Stack,
-    matrix: Matrix
+    matrix: Matrix,
+    bank: Box<[f64]>,
+    tuples: Box<[Box<[f64]>]>
 }
 
 impl VM {
-    pub fn new(instrs: Vec<Instr>, matrix_size: (usize, usize), stack_capacity: usize) -> VM {
-        VM { instrs: instrs, matrix: Matrix::new(matrix_size.0, matrix_size.1), stack: Stack::new(stack_capacity) }
+    pub fn new(instrs: Vec<Instr>, tuples: Box<[Box<[f64]>]>, bank_size: usize, matrix_size: (usize, usize), stack_capacity: usize) -> VM {
+        VM { 
+            instrs: instrs, 
+            tuples,
+            bank: vec![0.0; bank_size].into_boxed_slice(), 
+            matrix: Matrix::new(matrix_size.0, matrix_size.1), 
+            stack: Stack::new(stack_capacity) 
+        }
     }
 
     pub fn run(&mut self) {
@@ -116,6 +148,61 @@ impl VM {
             match  instr {
                 Instr::Push(data) => {
                     self.stack.push(data);
+                    return;
+                },
+                Instr::Frame(argc) => {
+                    let argc= argc.to_number(0, self);
+
+                    if let Some(argc) = argc {
+                        self.stack.push(Data::Frame(argc.floor() as usize, 0));
+                    }
+                    
+                    return;
+                },
+                Instr::Set_Matrix(a, b, c) => {
+                    let a = a.to_number(0, self);
+                    let b = b.to_number(1, self);
+                    let c = c.to_number(2, self);
+                    
+                    if !(a == None || b == None || c == None) {
+                        let a = a.unwrap().floor() as usize;
+                        let b = b.unwrap().floor() as usize;
+                        let c = c.unwrap();
+            
+                        self.matrix.set(a, b, c);
+                    }
+
+                    return;
+                },
+                Instr::Set_Bank(index, number) => {
+                    let index = index.to_number(0, self);
+                    let number = number.to_number(1, self);
+                    
+                    if !(index == None || number == None) {
+                        let index = index.unwrap().floor() as usize;
+                        let number = number.unwrap();
+            
+                        if index < self.bank.len() {
+                            self.bank[index] = number;
+                        }
+                    }
+
+                    return;
+                },
+                Instr::Set_Arg(index, number) => {
+                    let index = index.to_number(0, self);
+                    let number = number.to_number(1, self);
+
+
+                    if !(index == None || number == None) {
+                        let index = index.unwrap().floor() as usize;
+                        let number = number.unwrap();
+            
+                        if index < self.bank.len() {
+                            self.bank[index] = number;
+                        }
+                    }
+
                     return;
                 },
                 _ => (),
@@ -133,7 +220,7 @@ impl VM {
                 Instr::LesserEqual (a,b) => self.eval_binary_op(a, b, &instr_ops::lesser_equal),
                 Instr::GreaterEqual (a,b) => self.eval_binary_op(a, b, &instr_ops::greater_equal),
                 Instr::Not(a) => {
-                    let a = a.to_number(&mut self.stack, &self.matrix);
+                    let a = a.to_number(0, self);
                     if let Some(a) = a {
                         Some(if a != 0.0 { 0.0 } else { 1.0 })
                     } else {
@@ -143,25 +230,13 @@ impl VM {
                 Instr::And (a,b) => self.eval_binary_op(a, b, &instr_ops::and),
                 Instr::Or (a,b) => self.eval_binary_op(a, b, &instr_ops::or),
                 Instr::Xor (a,b) => self.eval_binary_op(a, b, &instr_ops::xor),
-                Instr::Conditional(a, b, c) => {
-                    let a = a.to_number(&mut self.stack, &self.matrix);
-                    let b = b.to_number(&mut self.stack, &self.matrix);
-                    let c = c.to_number(&mut self.stack, &self.matrix);
-                    
-                    if a == None || b == None || c == None {
-                        None
-                    } else {
-                        let a = a.unwrap();
-                        let b = b.unwrap();
-                        let c = c.unwrap();
-
-                        if a != 0.0 {
-                            Some(b)
-                        } else {
-                            Some(c)
-                        }
-                    }
-                },
+                Instr::Conditional(a, b, c) => self.eval_trinary_op(a, b, c, &instr_ops::conditional),
+                Instr::Get_Arg(a) => a.to_number(0, self).and_then(|index|
+                    self.stack.get_arg(index.floor() as usize).and_then(|data| data.to_number())
+                ),
+                Instr::Get_Bank(a) => a.to_number(0, self).and_then(|index|
+                    self.bank.get(index.floor() as usize).and_then(|number| Some(*number))
+                ),
                 _ => None,
             };
 
@@ -174,8 +249,8 @@ impl VM {
     }
 
     fn eval_binary_op(&mut self, a: Reference, b: Reference, op: &dyn Fn(f64, f64) -> f64) -> Option<f64> {
-        let a = a.to_number(&mut self.stack, &self.matrix);
-        let b = b.to_number(&mut self.stack, &self.matrix);
+        let a = a.to_number(0, self);
+        let b = b.to_number(1, self);
 
         if a == None || b == None {
             None
@@ -184,6 +259,22 @@ impl VM {
             let b = b.unwrap();
             
             Some(op(a,b))
+        }
+    }
+
+    fn eval_trinary_op(&mut self, a: Reference, b: Reference, c: Reference, op: &dyn Fn(f64, f64, f64) -> f64) -> Option<f64> {
+        let a = a.to_number(0, self);
+        let b = b.to_number(1, self);
+        let c = c.to_number(2, self);
+        
+        if a == None || b == None || c == None {
+            None
+        } else {
+            let a = a.unwrap();
+            let b = b.unwrap();
+            let c = c.unwrap();
+
+            Some(op(a,b,c))
         }
     }
 }
@@ -209,7 +300,7 @@ mod test {
             Instr::Push(Data::Number(0.0)),
             Instr::Conditional(Reference::Stack, Reference::Stack, Reference::Stack)
         ].into_iter().rev().collect();
-        let mut vm = VM::new(instrs, (100, 100), 10);
+        let mut vm = VM::new(instrs, vec![vec![0.0; 0].into_boxed_slice(); 0].into_boxed_slice(), 10, (100, 100), 10);
         vm.run();
 
         assert_eq!(vm.stack.pop().unwrap(), Data::Number(6.0));
