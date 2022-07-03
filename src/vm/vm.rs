@@ -48,6 +48,7 @@ pub enum Instr {
     Conditional(Reference, Reference, Reference),
 
     Push(Data),
+    Duplicate,
 
     Set_Matrix(Reference, Reference, Reference),
 
@@ -213,6 +214,13 @@ impl VM {
                 Instr::Jump(pointer) => {
                     self.instr_pointer = pointer;
 
+                    return;
+                },
+                Instr::Duplicate => {
+                    let data = self.stack.peek();
+                    if let Some(data) = data {
+                        self.stack.push(data);
+                    }
                     return;
                 }
                 _ => (),

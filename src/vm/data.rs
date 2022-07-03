@@ -46,6 +46,14 @@ impl Stack {
         }
     }
 
+    pub fn peek(&self) -> Option<Data> {
+        if matches!(self.stack.last(), Some(Data::Frame(_, _))) {
+            None
+        } else {
+            self.stack.last().and_then(|last| Some(*last))
+        }
+    }
+
     pub fn pop_frame(&mut self) {
         while !self.stack.is_empty() && !matches!(self.stack.last(), Some(Data::Frame(_, _))) {
             self.stack.pop();
