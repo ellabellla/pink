@@ -21,6 +21,7 @@ token_lookup!(
     ("&", CONCAT),
 
     (":", SET),
+    (";", RANGE),
 
     ("!", NOT),
     ("+", ADD),
