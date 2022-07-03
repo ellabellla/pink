@@ -1,3 +1,5 @@
+use std::{collections::HashMap, cell::Ref};
+
 use super::{Stack, Data, Matrix};
 
 #[derive(Clone, Copy)]
@@ -7,6 +9,7 @@ pub enum Reference {
     Matrix(usize, usize),
     Literal(f64),
     Tuple(usize),
+    DynamicTuple(usize),
 }
 
 impl Reference {
@@ -18,6 +21,13 @@ impl Reference {
             Reference::Literal(num) => Some(*num),
             Reference::Tuple(tuple_index) => {
                 if let Some(tuple) = vm.tuples.get(*tuple_index) {
+                    tuple.get(index).and_then(|number| Some(*number))
+                } else {
+                    None
+                }
+            },
+            Reference::DynamicTuple(tuple_index) => {
+                if let Some(tuple) = vm.dynamic_tuples.get(tuple_index) {
                     tuple.get(index).and_then(|number| Some(*number))
                 } else {
                     None
@@ -58,6 +68,10 @@ pub enum Instr {
 
     Get_Bank(Reference),
     Set_Bank(Reference, Reference),
+
+    Create_Tuple(usize, usize),
+    Remove_Tuple(usize),
+    Set_Dyn_Tuple(Reference, Reference, Reference),
 
     Jump(usize),
 }
@@ -127,6 +141,7 @@ pub struct VM {
     bank: Box<[f64]>,
     tuples: Box<[Box<[f64]>]>,
     instr_pointer: usize,
+    dynamic_tuples: HashMap<usize, Vec<f64>>,
 }
 
 impl VM {
@@ -134,6 +149,7 @@ impl VM {
         VM { 
             instrs: instrs, 
             tuples,
+            dynamic_tuples: HashMap::new(),
             bank: vec![0.0; bank_size].into_boxed_slice(), 
             matrix: Matrix::new(matrix_size.0, matrix_size.1), 
             stack: Stack::new(stack_capacity),
@@ -222,6 +238,27 @@ impl VM {
                         self.stack.push(data);
                     }
                     return;
+                },
+                Instr::Create_Tuple(index, size) => {
+                    self.dynamic_tuples.insert(index, vec![0.0; size]);
+                },
+                Instr::Remove_Tuple(index) => {
+                    self.dynamic_tuples.remove(&index);
+                },
+                Instr::Set_Dyn_Tuple(index, x, number) => {
+                    let index = index.to_number(0, self);
+                    let x = x.to_number(1, self);
+                    let number = number.to_number(2, self);
+
+                    if index.is_some() && x.is_some() && number.is_some() {
+                        let index = index.unwrap();
+                        let x = x.unwrap();
+                        let number = number.unwrap();
+
+                        self.dynamic_tuples.get_mut(&(index.floor() as usize))
+                        .and_then(|tuple| tuple.get_mut(x.floor() as usize)
+                        .and_then(|num| {*num = number; Some(number)}));
+                    } 
                 }
                 _ => (),
             }
