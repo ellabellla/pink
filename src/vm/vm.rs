@@ -10,6 +10,7 @@ pub enum Reference {
     Literal(f64),
     Tuple(usize),
     DynamicTuple(usize),
+    None,
 }
 
 impl Reference {
@@ -32,7 +33,8 @@ impl Reference {
                 } else {
                     None
                 }
-            }
+            },
+            Reference::None => None,
         }
     }
 }
@@ -62,7 +64,8 @@ pub enum Instr {
 
     Set_Matrix(Reference, Reference, Reference),
 
-    Frame(Reference),
+    Push_Frame(Reference),
+    Pop_Frame(Reference),
     Get_Arg(Reference),
     Set_Arg(Reference, Reference),
 
@@ -172,7 +175,7 @@ impl VM {
                     self.stack.push(data);
                     return;
                 },
-                Instr::Frame(argc) => {
+                Instr::Push_Frame(argc) => {
                     let argc= argc.to_number(0, self);
 
                     if let Some(argc) = argc {
@@ -180,6 +183,12 @@ impl VM {
                     }
                     
                     return;
+                },
+                Instr::Pop_Frame(res) => {
+                    self.stack.pop_frame();
+                    if let Some(res) = res.to_number(0, self) {
+                        self.stack.push(Data::Number(res));
+                    }
                 },
                 Instr::Set_Matrix(a, b, c) => {
                     let a = a.to_number(0, self);
