@@ -45,6 +45,12 @@ token_lookup!(
     ("|", FROM).
     (",", COMMA),
     
+    ("[", OPEN_BRACKET),
+    ("]", CLOSE_BRACKET),
+    ("(", OPEN_PARENTHESES),
+    (")", CLOSE_PARENTHESES),
+    ("{", OPEN_BRACE),
+    ("}", CLOSE_BRACE),
 
     (String, STRING),
     (f64, NUMBER),
