@@ -1,8 +1,6 @@
-use core::num;
-use std::cell::Ref;
-
 use super::{Stack, Data, Matrix};
 
+#[derive(Clone, Copy)]
 pub enum Reference {
     Stack,
     Bank(usize),
@@ -29,6 +27,7 @@ impl Reference {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Instr {
     Add(Reference, Reference),
     Sub(Reference, Reference),
@@ -58,6 +57,8 @@ pub enum Instr {
 
     Get_Bank(Reference),
     Set_Bank(Reference, Reference),
+
+    Jump(usize),
 }
 
 mod instr_ops {
@@ -123,7 +124,8 @@ pub struct VM {
     stack: Stack,
     matrix: Matrix,
     bank: Box<[f64]>,
-    tuples: Box<[Box<[f64]>]>
+    tuples: Box<[Box<[f64]>]>,
+    instr_pointer: usize,
 }
 
 impl VM {
@@ -133,18 +135,21 @@ impl VM {
             tuples,
             bank: vec![0.0; bank_size].into_boxed_slice(), 
             matrix: Matrix::new(matrix_size.0, matrix_size.1), 
-            stack: Stack::new(stack_capacity) 
+            stack: Stack::new(stack_capacity),
+            instr_pointer:  0,
         }
     }
 
     pub fn run(&mut self) {
-        while !self.instrs.is_empty() {
+        while self.instr_pointer < self.instrs.len() {
             self.eval_instr();
         }
     }
 
     fn eval_instr(&mut self) {
-        if let Some(instr) = self.instrs.pop() {
+        if let Some(instr) = self.instrs.get(self.instr_pointer) {
+            let instr = instr.clone();
+            self.instr_pointer+=1;
             match  instr {
                 Instr::Push(data) => {
                     self.stack.push(data);
@@ -205,6 +210,11 @@ impl VM {
 
                     return;
                 },
+                Instr::Jump(pointer) => {
+                    self.instr_pointer = pointer;
+                    
+                    return;
+                }
                 _ => (),
             }
     
@@ -245,6 +255,8 @@ impl VM {
             } else {
                 panic!("VM failed to eval instr");
             }
+        } else {
+            self.instr_pointer = self.instrs.len();
         }
     }
 
@@ -299,7 +311,7 @@ mod test {
             Instr::Push(Data::Number(1.0)),
             Instr::Push(Data::Number(0.0)),
             Instr::Conditional(Reference::Stack, Reference::Stack, Reference::Stack)
-        ].into_iter().rev().collect();
+        ];
         let mut vm = VM::new(instrs, vec![vec![0.0; 0].into_boxed_slice(); 0].into_boxed_slice(), 10, (100, 100), 10);
         vm.run();
 
