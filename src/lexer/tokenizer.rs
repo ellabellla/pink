@@ -44,8 +44,36 @@ impl<'a> Tokenizer {
         self.stream.seek(pos);
     }
 
+    pub fn pos(&self) -> usize {
+        self.stream.pos()
+    }
+
+    pub fn seek(&mut self, index:usize) {
+        self.stream.seek(index);
+    }
+
     pub fn was_newline_before(&self) -> bool {
         matches!(self.prev_whitespace, Whitespace::Newline)
+    }
+
+    pub fn newline_next(&mut self) -> bool {
+        let start_pos = self.stream.pos();
+        let mut found = false;
+        while let Some(next) = self.stream.peek() {
+            if next.is_whitespace() {
+                if next == '\n' {
+                    found = true;
+                    break;
+                }
+                self.stream.next();
+            }
+            else {
+                break;
+            }
+        }
+        self.stream.seek(start_pos);
+        found
+    
     }
 
     fn skip_whitespace(&mut self) {

@@ -35,7 +35,7 @@ impl CharStream {
         }
     }
 
-    pub fn pos(&mut self) -> usize {
+    pub fn pos(&self) -> usize {
         self.index
     }
 }
