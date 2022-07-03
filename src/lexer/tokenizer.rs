@@ -221,6 +221,7 @@ impl<'a> Tokenizer {
             }
         }
         if !found_start {
+            self.stream.seek(last_valid_pos);
             return None
         } 
 
@@ -290,6 +291,18 @@ mod tokenizer_test {
     fn test_next() {
         let input = "+ - * / = +: -: -> *>";
         let expected = [Token::ADD, Token::SUB, Token::MUL, Token::DIV, Token:: EQU, Token::ADD_SET, Token::SUB_SET, Token::EXEC, Token::REDUCE_EXEC];
+        let mut tokenizer = Tokenizer::new(input).enumerate();
+
+
+        while let Some((i, token)) = tokenizer.next() {
+            assert_eq!(token, expected[i]);
+        }
+    }
+    
+    #[test]
+    fn test_next_nospace() {
+        let input = "variable:10,";
+        let expected = [Token::IDENTIFIER("variable".to_string()), Token::SET, Token::NUMBER(10.0), Token::COMMA];
         let mut tokenizer = Tokenizer::new(input).enumerate();
 
 
