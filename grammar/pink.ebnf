@@ -1,0 +1,93 @@
+true = "true";
+false = "false";
+
+and = "and";
+or = "or";
+xor = "xor";
+
+peek = "@@";
+pop = "@";
+outer = "^";
+
+if = "?";
+nth = "'";
+into = "<-";
+exec = "->";
+reduce_exec = "*>";
+
+concat = "&";
+
+
+add_set = "+:";
+sub_set = "-:";
+mul_set = "*:";
+div_set = "/:";
+setters = add_set | sub_set | mul_set | div_set;
+
+set = ":";
+
+not = "!";
+add = "+";
+sub = "-";
+mul = "*";
+div = "/";
+
+less_equ = "<=";
+great_equ = ">=";
+less = "<";
+great = ">";
+equ = "=";
+
+chain = ".";
+
+nothing = "_";
+
+from = "|";
+comma = ",";
+
+alpha = [A-Za-z];
+digit = [0-9];
+
+number = '-'? digit+ ('.' digit*) | '.' digit+;
+identifier = (alpha | '_') (alpha | digit | '_')*;
+
+value = number | not number | true | false | identifier;
+operator = and | or | xor | add | sub | mul | div | less_equ | great_equ | less | great | equ;
+
+
+tuple_literal_2nd = "(" value "," value ("," value)* ")";
+tuple_literal = "(" value ("," value)* ")";
+tuple_expression_2nd = "(" expression "," expression ("," expression)* ")";
+tuple_expression = "(" expression ("," expression)* ")";
+tuple_2nd = tuple_literal_2nd | tuple_expression_2nd;
+tuple = tuple_literal_2nd | tuple_expression_2nd | tuple_literal | tuple_expression;
+
+named_element = identifier set expression | identifier
+tuple_named = "(" named_element ("," named_element) ")";
+
+expression_list = "[" (expression | inner_statement) ("," (expression | inner_statement))* "]";
+
+expression = (value | tuple)
+    | expression if tuple_2nd
+    | expression operator expression;
+
+
+define_expression = identifier setters expression;
+define_function = identifier set (function | expression);
+define = define_expression | define_function;
+function = tuple_named exec expression_list;
+
+into_metadata = "{" value (',' value)? "}"; 
+reduce_metadata = "{" expression ("," identifier set expression)*  "}"; 
+
+exec_function = tuple exec identifier;
+into_function = (tuple | identifier) into_metadata? into (expression_list | tuple); 
+reduce_function = reduce_metadata? reduce_exec expression_list; 
+
+matrix = "[" number ";" number "]";
+matrix_define = identifier set matrix;
+
+inner_statement =  exec_function | into_function | reduce_function | define_expression | expression;
+statement = inner_statement | matrix_define | define_function;
+
+grammar = (statement comma)*;
