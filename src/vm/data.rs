@@ -1,5 +1,3 @@
-use core::num;
-
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Data {
     Number(f64),

@@ -212,7 +212,7 @@ impl VM {
                 },
                 Instr::Jump(pointer) => {
                     self.instr_pointer = pointer;
-                    
+
                     return;
                 }
                 _ => (),
@@ -294,10 +294,7 @@ impl VM {
 
 #[cfg(test)]
 mod test {
-    use std::cell::Ref;
-
     use crate::vm::{Data, Reference};
-
     use super::{Instr, VM};
 
     #[test]
