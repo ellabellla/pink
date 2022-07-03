@@ -2,10 +2,16 @@ use crate::lexer::charstream::CharStream;
 use crate::lexer::token_lookup::*;
 use queues::*;
 
+enum Whitespace {
+    Newline,
+    Blank,
+}
+
 pub struct Tokenizer {
     stream: CharStream,
     history: Queue<usize>,
     line: usize,
+    prev_whitespace: Whitespace,
 }
 
 impl Iterator for Tokenizer {
@@ -29,7 +35,7 @@ impl Iterator for Tokenizer {
 #[allow(dead_code)]
 impl<'a> Tokenizer {
     pub fn new(input: &str) -> Tokenizer {
-        Tokenizer{stream: CharStream::new(input), history: queue![], line: 0}
+        Tokenizer{stream: CharStream::new(input), history: queue![], line: 0, prev_whitespace: Whitespace::Blank}
     }
 
     pub fn back(&mut self) {
@@ -38,11 +44,17 @@ impl<'a> Tokenizer {
         self.stream.seek(pos);
     }
 
+    pub fn was_newline_before(&self) -> bool {
+        matches!(self.prev_whitespace, Whitespace::Newline)
+    }
+
     fn skip_whitespace(&mut self) {
+        self.prev_whitespace = Whitespace::Blank;
         while let Some(next) = self.stream.peek() {
             if next.is_whitespace() {
                 if next == '\n' {
                     self.line += 1;
+                    self.prev_whitespace = Whitespace::Newline;
                 }
                 self.stream.next();
             }
@@ -248,7 +260,7 @@ mod tokenizer_test {
 
     #[test]
     fn test_next() {
-        let input = "+ - * / = += -= -> *>";
+        let input = "+ - * / = +: -: -> *>";
         let expected = [Token::ADD, Token::SUB, Token::MUL, Token::DIV, Token:: EQU, Token::ADD_SET, Token::SUB_SET, Token::EXEC, Token::REDUCE_EXEC];
         let mut tokenizer = Tokenizer::new(input).enumerate();
 
