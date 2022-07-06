@@ -1,63 +1,56 @@
 use token_lookup_macro::token_lookup;
 
 token_lookup!(
-    ("true", TRUE),
-    ("false", FALSE),
+    ("true", True),
+    ("false", False),
     
-    ("and", AND),
-    ("or", OR),
-    ("xor", XOR),
+    ("and", And),
+    ("or", Or),
+    ("xor", Xor),
     
-    ("@@", PEEK),
-    ("@", POP),
-    ("^", OUTER),
+    ("@@", Peek),
+    ("@", Pop),
 
-    ("?", IF),
-    ("'", NTH),
-    ("<-", INTO),
-    ("->", EXEC),
-    ("*>", REDUCE_EXEC),
+    ("?", If),
+    ("<-", Into),
+    ("->", Exec),
+    ("*>", Reduce),
+    ("<*", ForEach)
 
-    ("&", CONCAT),
+    (":", Set),
 
-    (":", SET),
-    (";", RANGE),
-
-    ("!", NOT),
-    ("+", ADD),
-    ("-", SUB),
-    ("*", MUL),
-    ("/", DIV),
-    ("<", LESS),
-    (">", GREAT),
-    ("=", EQU),
-    ("<=", LESS_EQU),
-    (">=", GREAT_EQU),
+    ("!", Not),
+    ("+", Add),
+    ("-", Subtract),
+    ("*", Multiply),
+    ("/", Divide),
+    ("<", LessThan),
+    (">", GreaterThan),
+    ("=", Equals),
+    ("<=", LessThanOrEqual),
+    (">=", GreaterThanOrEqual),
     
-    ("+:", ADD_SET),
-    ("-:", SUB_SET),
-    ("*:", MUL_SET),
-    ("/:", DIV_SET),
+    ("+:", AddAndSet),
+    ("-:", SubtractAndSet),
+    ("*:", MultiplyAndSet),
+    ("/:", DivideAndSet),
 
-    (".", CHAIN),
 
-    ("_", NOTHING),
-
-    ("|", FROM).
-    (",", COMMA),
+    (",", SeparateAndPush),
+    (";", Separate),
     
-    ("[", OPEN_BRACKET),
-    ("]", CLOSE_BRACKET),
-    ("(", OPEN_PARENTHESES),
-    (")", CLOSE_PARENTHESES),
-    ("{", OPEN_BRACE),
-    ("}", CLOSE_BRACE),
+    ("[", OpenBracket),
+    ("]", CloseBracket),
+    ("(", OpenParentheses),
+    (")", CloseParentheses),
+    ("{", OpenBrace),
+    ("}", CloseBrace),
 
-    (String, STRING),
-    (f64, NUMBER),
-    (String, IDENTIFIER),
+    (String, ListString),
+    (f64, Number),
+    (String, Identifier),
     (_, EOF),
-    (_, UNDEFINED)
+    (_, Undefined)
 );
 
 pub const TOKEN_STRING_START: &str = "\"[";

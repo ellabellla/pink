@@ -19,12 +19,16 @@ impl Iterator for Tokenizer {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace();
+        
+        if self.stream.peek() == None {
+            return Some(Token::EOF);
+        }
+
         self.history.add(self.stream.pos()).expect("history queue failed");
 
-
-        self.parse_number().or(
-            self.parse_reserved_word().or( 
-                self.parse_identifier().or(
+        self.parse_number().or_else(||
+            self.parse_reserved_word().or_else(||
+                self.parse_identifier().or_else(||
                     self.parse_string()
                 )
             )
@@ -97,7 +101,7 @@ impl<'a> Tokenizer {
         let mut lookup_index: usize = 0;
         let mut lookup_count: usize = TOKEN_LOOKUP_TABLE[0].column.len();
 
-        let mut last_token = Token::UNDEFINED;
+        let mut last_token = Token::Undefined;
         let mut last_valid_pos = self.stream.pos();
 
         while let Some(next) = self.stream.next() {
@@ -110,7 +114,7 @@ impl<'a> Tokenizer {
                         Lookup_Data::INDEX(index, count) => {
                             lookup_index = index;
                             lookup_count = count;
-                            last_token = Token::UNDEFINED;
+                            last_token = Token::Undefined;
                             break;
                         },
                         Lookup_Data::TOKEN(token) => {
@@ -130,7 +134,7 @@ impl<'a> Tokenizer {
                 lookup_column += 1;
             } else {
                 self.stream.seek(last_valid_pos);
-                if last_token == Token::UNDEFINED {
+                if last_token == Token::Undefined {
                     return None;
                 } else {
                     return Some(last_token)
@@ -169,7 +173,7 @@ impl<'a> Tokenizer {
         let string: String = data.iter().collect();
         match string.parse::<f64>() {
             Ok(number) => {
-                return Some(Token::NUMBER(number));
+                return Some(Token::Number(number));
             },
             Err(_) => {
                 self.stream.seek(last_valid_pos);
@@ -195,7 +199,7 @@ impl<'a> Tokenizer {
                 }
 
                 if data.len() > 0 {
-                    return Some(Token::IDENTIFIER(data.iter().collect()));
+                    return Some(Token::Identifier(data.iter().collect()));
                 }
             }
         } 
@@ -269,7 +273,7 @@ impl<'a> Tokenizer {
                     self.stream.seek(start_pos);
                     data.push(character);
                 } else {
-                    return Some(Token::STRING(data.iter().collect()));
+                    return Some(Token::ListString(data.iter().collect()));
                 }
             } 
 
@@ -290,7 +294,7 @@ mod tokenizer_test {
     #[test]
     fn test_next() {
         let input = "+ - * / = +: -: -> *>";
-        let expected = [Token::ADD, Token::SUB, Token::MUL, Token::DIV, Token:: EQU, Token::ADD_SET, Token::SUB_SET, Token::EXEC, Token::REDUCE_EXEC];
+        let expected = [Token::Add, Token::Subtract, Token::Multiply, Token::Divide, Token:: Equals, Token::AddAndSet, Token::SubtractAndSet, Token::Exec, Token::Reduce];
         let mut tokenizer = Tokenizer::new(input).enumerate();
 
 
@@ -302,7 +306,7 @@ mod tokenizer_test {
     #[test]
     fn test_next_nospace() {
         let input = "variable:10,";
-        let expected = [Token::IDENTIFIER("variable".to_string()), Token::SET, Token::NUMBER(10.0), Token::COMMA];
+        let expected = [Token::Identifier("variable".to_string()), Token::Set, Token::Number(10.0), Token::SeparateAndPush];
         let mut tokenizer = Tokenizer::new(input).enumerate();
 
 
@@ -315,21 +319,21 @@ mod tokenizer_test {
     fn test_parse_number() {
         let input = "-0.1";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(-0.1)), tokenizer.parse_number());
+        assert_eq!(Some(Token::Number(-0.1)), tokenizer.parse_number());
 
 
         let input = "-.1";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(-0.1)), tokenizer.parse_number());
+        assert_eq!(Some(Token::Number(-0.1)), tokenizer.parse_number());
 
 
         let input = ".1";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(0.1)), tokenizer.parse_number());
+        assert_eq!(Some(Token::Number(0.1)), tokenizer.parse_number());
 
         let input = "123a";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::NUMBER(123.0)), tokenizer.parse_number());
+        assert_eq!(Some(Token::Number(123.0)), tokenizer.parse_number());
 
         let input = "a";
         let mut tokenizer = Tokenizer::new(input);
@@ -340,19 +344,19 @@ mod tokenizer_test {
     fn test_parse_indentifier() {
         let input = "ident";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::IDENTIFIER(String::from("ident"))), tokenizer.parse_identifier());
+        assert_eq!(Some(Token::Identifier(String::from("ident"))), tokenizer.parse_identifier());
 
         let input = "_ident";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::IDENTIFIER(String::from("_ident"))), tokenizer.parse_identifier());
+        assert_eq!(Some(Token::Identifier(String::from("_ident"))), tokenizer.parse_identifier());
 
         let input = "ide2j89nt";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::IDENTIFIER(String::from("ide2j89nt"))), tokenizer.parse_identifier());
+        assert_eq!(Some(Token::Identifier(String::from("ide2j89nt"))), tokenizer.parse_identifier());
 
         let input = "ident_";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::IDENTIFIER(String::from("ident_"))), tokenizer.parse_identifier());
+        assert_eq!(Some(Token::Identifier(String::from("ident_"))), tokenizer.parse_identifier());
 
         let input = "1ide";
         let mut tokenizer = Tokenizer::new(input);
@@ -363,10 +367,10 @@ mod tokenizer_test {
     fn test_parse_string() {
         let input = "\"[hello world]";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::STRING(String::from("hello world"))), tokenizer.parse_string());
+        assert_eq!(Some(Token::ListString(String::from("hello world"))), tokenizer.parse_string());
 
         let input = "\"[hello world\\\\n\\n]";
         let mut tokenizer = Tokenizer::new(input);
-        assert_eq!(Some(Token::STRING(String::from("hello world\\n\n"))), tokenizer.parse_string());
+        assert_eq!(Some(Token::ListString(String::from("hello world\\n\n"))), tokenizer.parse_string());
     }
 }
