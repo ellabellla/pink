@@ -9,9 +9,9 @@ enum Whitespace {
 
 pub struct Tokenizer {
     stream: CharStream,
-    history: Queue<usize>,
+    history: Queue<(usize, usize, usize)>,
     line: usize,
-    prev_whitespace: Whitespace,
+    line_index: usize,
 }
 
 impl Iterator for Tokenizer {
@@ -19,12 +19,12 @@ impl Iterator for Tokenizer {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace();
-        
+
         if self.stream.peek() == None {
             return Some(Token::EOF);
         }
 
-        self.history.add(self.stream.pos()).expect("history queue failed");
+        self.history.add((self.stream.pos(), self.line, self.line_index)).expect("history queue failed");
 
         self.parse_number().or_else(||
             self.parse_reserved_word().or_else(||
@@ -39,25 +39,26 @@ impl Iterator for Tokenizer {
 #[allow(dead_code)]
 impl<'a> Tokenizer {
     pub fn new(input: &str) -> Tokenizer {
-        Tokenizer{stream: CharStream::new(input), history: queue![], line: 0, prev_whitespace: Whitespace::Blank}
+        Tokenizer{stream: CharStream::new(input), history: queue![], line: 0, line_index: 0}
     }
 
     pub fn back(&mut self) {
-        let pos = self.history.remove().unwrap_or_else(|_| 0);
+        let (pos, line, line_index) = self.history.remove().unwrap_or_else(|_| (0,0,0));
 
         self.stream.seek(pos);
+        self.line = line;
+        self.line_index = line_index;
     }
 
-    pub fn pos(&self) -> usize {
-        self.stream.pos()
+    pub fn pos(&self) -> (usize, usize, usize) {
+        (self.stream.pos(), self.line, self.line_index)
     }
 
-    pub fn seek(&mut self, index:usize) {
+    pub fn seek(&mut self, history: (usize, usize, usize)) {
+        let (index, line, line_index) = history;
         self.stream.seek(index);
-    }
-
-    pub fn was_newline_before(&self) -> bool {
-        matches!(self.prev_whitespace, Whitespace::Newline)
+        self.line = line;
+        self.line_index = line_index;
     }
 
     pub fn newline_next(&mut self) -> bool {
@@ -81,12 +82,11 @@ impl<'a> Tokenizer {
     }
 
     fn skip_whitespace(&mut self) {
-        self.prev_whitespace = Whitespace::Blank;
         while let Some(next) = self.stream.peek() {
             if next.is_whitespace() {
                 if next == '\n' {
                     self.line += 1;
-                    self.prev_whitespace = Whitespace::Newline;
+                    self.line_index = self.stream.pos();
                 }
                 self.stream.next();
             }
@@ -149,13 +149,6 @@ impl<'a> Tokenizer {
         let last_valid_pos = self.stream.pos();
         let mut data = Vec::new();
 
-        if let Some(character) = self.stream.peek() {
-            if character == '-' {
-                data.push(character);
-                self.stream.next();
-            }
-        }
-
         let mut found_dot  = false;
 
         while let Some(character) = self.stream.peek() {
@@ -168,6 +161,11 @@ impl<'a> Tokenizer {
                 data.push(character)
             }
             self.stream.next();
+        }
+
+        if data.len() == 0 {
+            self.stream.seek(last_valid_pos);
+            return None;
         }
 
         let string: String = data.iter().collect();
