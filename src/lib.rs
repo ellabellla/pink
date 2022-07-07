@@ -1,4 +1,3 @@
-#![feature(is_some_with)]
 use wasm_bindgen::prelude::*;
 mod lexer;
 mod vm;
