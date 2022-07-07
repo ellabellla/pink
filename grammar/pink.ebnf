@@ -7,24 +7,20 @@ xor = "xor";
 
 peek = "@@";
 pop = "@";
-outer = "^";
 
 if = "?";
-nth = "'";
 into = "<-";
 exec = "->";
 reduce_exec = "*>";
-
-concat = "&";
-
+into_exec = "<*";
 
 add_set = "+:";
 sub_set = "-:";
 mul_set = "*:";
 div_set = "/:";
-setters = add_set | sub_set | mul_set | div_set;
-
 set = ":";
+setters = set | add_set | sub_set | mul_set | div_set;
+
 
 not = "!";
 add = "+";
@@ -38,56 +34,39 @@ less = "<";
 great = ">";
 equ = "=";
 
-chain = ".";
-
-nothing = "_";
-
-from = "|";
-comma = ",";
-
 alpha = [A-Za-z];
 digit = [0-9];
 
-number = '-'? digit+ ('.' digit*) | '.' digit+;
+number = digit+ ('.' digit*)? | '.' digit+;
 identifier = (alpha | '_') (alpha | digit | '_')*;
 
-value = number | not number | true | false | identifier;
-operator = and | or | xor | add | sub | mul | div | less_equ | great_equ | less | great | equ;
+reference = identifier | pop | peek;
+value = number | not number | true | false | indexed_value | reference | exec | reduce | for_each | into | tuple | meta;
+operator_1st = mul | div;
+operator_2nd = add | sub;
+operator_3rd = less_equ | great_equ | less | great | equ;
+operator_4th = and | or | xor;
 
+expression = expression_3rd (operator_4th expression_3rd)*;
+expression_3rd = expression_2nd (operator_3rd expression_2nd)*;
+expression_2nd = expression_3rd (operator_2nd expression_3rd)*;
+expression_3rd = expression_value (operator_1st expression_value)*;
+expression_value = value;
 
-tuple_literal_2nd = "(" value "," value ("," value)* ")";
-tuple_literal = "(" value ("," value)* ")";
-tuple_expression_2nd = "(" expression "," expression ("," expression)* ")";
-tuple_expression = "(" expression ("," expression)* ")";
-tuple_2nd = tuple_literal_2nd | tuple_expression_2nd;
-tuple = tuple_literal_2nd | tuple_expression_2nd | tuple_literal | tuple_expression;
+definition = identifier setters expression;
 
-named_element = identifier set expression | identifier
-tuple_named = "(" named_element ("," named_element) ")";
+expression_list = '[' ((expression | definition) ((',' | ';') (expression | definition))* (',' | ';')?)? ']';
 
-expression_list = "[" (expression | inner_statement) ("," (expression | inner_statement))* "]";
+exec = expression_list | (tuple exec expression);
+into = (meta | tuple | indexed_value | reference) into exec;
+for_each = (meta | tuple | indexed_value | reference) into_exec exec;
+reduce = (meta | tuple | indexed_value | reference) reduce_exec exec;
 
-expression = (value | tuple)
-    | expression if tuple_2nd
-    | expression operator expression;
+tuple = '(' ((definition | expression) (';' (definition | expression))*)? ')';
 
+indexed_value = reference meta;
+meta = '{' number (';' number)? '}'
 
-define_expression = identifier setters expression;
-define_function = identifier set (function | expression);
-define = define_expression | define_function;
-function = tuple_named exec expression_list;
+statement = (definition | expression) (',' | ';');
 
-into_metadata = "{" value (',' value)? "}"; 
-reduce_metadata = "{" expression ("," identifier set expression)*  "}"; 
-
-exec_function = tuple exec identifier;
-into_function = (tuple | identifier) into_metadata? into (expression_list | tuple); 
-reduce_function = reduce_metadata? reduce_exec expression_list; 
-
-matrix = "[" number ";" number "]";
-matrix_define = identifier set matrix;
-
-inner_statement =  exec_function | into_function | reduce_function | define_expression | expression;
-statement = inner_statement | matrix_define | define_function;
-
-grammar = (statement comma)*;
+grammar = statement* EOF;
