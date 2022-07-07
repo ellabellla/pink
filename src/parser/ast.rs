@@ -2,12 +2,14 @@ use crate::lexer::{Token, Tokenizer};
 
 use super::parse;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum StatementType {
     Push,
     Throw,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ASTNodeType {
     Operator(Token),
@@ -49,10 +51,13 @@ impl ASTNode {
     }
 }
 
+#[allow(dead_code)]
+
 pub struct AbstractSyntaxTree {
     pub root: Box<ASTNode>
 }
 
+#[allow(dead_code)]
 impl AbstractSyntaxTree {
     pub fn new(tokenizer: &mut Tokenizer) -> AbstractSyntaxTree {
         parse(tokenizer)

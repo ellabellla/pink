@@ -2,11 +2,6 @@ use crate::lexer::charstream::CharStream;
 use crate::lexer::token_lookup::*;
 use queues::*;
 
-enum Whitespace {
-    Newline,
-    Blank,
-}
-
 pub struct Tokenizer {
     stream: CharStream,
     history: Queue<(usize, usize, usize)>,

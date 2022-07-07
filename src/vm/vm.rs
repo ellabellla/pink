@@ -1,7 +1,8 @@
-use std::{collections::HashMap, cell::Ref};
+use std::{collections::HashMap};
 
 use super::{Stack, Data, Matrix};
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum Reference {
     Stack,
@@ -13,6 +14,7 @@ pub enum Reference {
     None,
 }
 
+#[allow(dead_code)]
 impl Reference {
     pub fn to_number(&self, index: usize, vm:  &mut VM) -> Option<f64> {
         match self {
@@ -39,6 +41,7 @@ impl Reference {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum Instr {
     Add(Reference, Reference),
@@ -62,23 +65,24 @@ pub enum Instr {
     Push(Data),
     Duplicate,
 
-    Set_Matrix(Reference, Reference, Reference),
+    SetMatrix(Reference, Reference, Reference),
 
-    Push_Frame(Reference),
-    Pop_Frame(Reference),
-    Get_Arg(Reference),
-    Set_Arg(Reference, Reference),
+    PushFrame(Reference),
+    PopFrame(Reference),
+    GetArg(Reference),
+    SetArg(Reference, Reference),
 
-    Get_Bank(Reference),
-    Set_Bank(Reference, Reference),
+    GetBank(Reference),
+    SetBank(Reference, Reference),
 
-    Create_Tuple(usize, usize),
-    Remove_Tuple(usize),
-    Set_Dyn_Tuple(Reference, Reference, Reference),
+    CreateTuple(usize, usize),
+    RemoveTuple(usize),
+    SetDynTuple(Reference, Reference, Reference),
 
     Jump(usize),
 }
 
+#[allow(dead_code)]
 mod instr_ops {
     pub fn add(a: f64, b: f64) -> f64 {
         a + b
@@ -137,6 +141,7 @@ mod instr_ops {
     }
 }
 
+#[allow(dead_code)]
 pub struct VM {
     instrs: Vec<Instr>,
     stack: Stack,
@@ -147,6 +152,7 @@ pub struct VM {
     dynamic_tuples: HashMap<usize, Vec<f64>>,
 }
 
+#[allow(dead_code)]
 impl VM {
     pub fn new(instrs: Vec<Instr>, tuples: Box<[Box<[f64]>]>, bank_size: usize, matrix_size: (usize, usize), stack_capacity: usize) -> VM {
         VM { 
@@ -175,7 +181,7 @@ impl VM {
                     self.stack.push(data);
                     return;
                 },
-                Instr::Push_Frame(argc) => {
+                Instr::PushFrame(argc) => {
                     let argc= argc.to_number(0, self);
 
                     if let Some(argc) = argc {
@@ -184,13 +190,13 @@ impl VM {
                     
                     return;
                 },
-                Instr::Pop_Frame(res) => {
+                Instr::PopFrame(res) => {
                     self.stack.pop_frame();
                     if let Some(res) = res.to_number(0, self) {
                         self.stack.push(Data::Number(res));
                     }
                 },
-                Instr::Set_Matrix(a, b, c) => {
+                Instr::SetMatrix(a, b, c) => {
                     let a = a.to_number(0, self);
                     let b = b.to_number(1, self);
                     let c = c.to_number(2, self);
@@ -205,7 +211,7 @@ impl VM {
 
                     return;
                 },
-                Instr::Set_Bank(index, number) => {
+                Instr::SetBank(index, number) => {
                     let index = index.to_number(0, self);
                     let number = number.to_number(1, self);
                     
@@ -220,7 +226,7 @@ impl VM {
 
                     return;
                 },
-                Instr::Set_Arg(index, number) => {
+                Instr::SetArg(index, number) => {
                     let index = index.to_number(0, self);
                     let number = number.to_number(1, self);
 
@@ -248,13 +254,13 @@ impl VM {
                     }
                     return;
                 },
-                Instr::Create_Tuple(index, size) => {
+                Instr::CreateTuple(index, size) => {
                     self.dynamic_tuples.insert(index, vec![0.0; size]);
                 },
-                Instr::Remove_Tuple(index) => {
+                Instr::RemoveTuple(index) => {
                     self.dynamic_tuples.remove(&index);
                 },
-                Instr::Set_Dyn_Tuple(index, x, number) => {
+                Instr::SetDynTuple(index, x, number) => {
                     let index = index.to_number(0, self);
                     let x = x.to_number(1, self);
                     let number = number.to_number(2, self);
@@ -295,10 +301,10 @@ impl VM {
                 Instr::Or (a,b) => self.eval_binary_op(a, b, &instr_ops::or),
                 Instr::Xor (a,b) => self.eval_binary_op(a, b, &instr_ops::xor),
                 Instr::Conditional(a, b, c) => self.eval_trinary_op(a, b, c, &instr_ops::conditional),
-                Instr::Get_Arg(a) => a.to_number(0, self).and_then(|index|
+                Instr::GetArg(a) => a.to_number(0, self).and_then(|index|
                     self.stack.get_arg(index.floor() as usize).and_then(|data| data.to_number())
                 ),
-                Instr::Get_Bank(a) => a.to_number(0, self).and_then(|index|
+                Instr::GetBank(a) => a.to_number(0, self).and_then(|index|
                     self.bank.get(index.floor() as usize).and_then(|number| Some(*number))
                 ),
                 _ => None,

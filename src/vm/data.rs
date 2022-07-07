@@ -1,9 +1,11 @@
+#[allow(dead_code)]
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Data {
     Number(f64),
     Frame(usize, usize),
 }
 
+#[allow(dead_code)]
 impl Data {
     pub fn to_number(&self) -> Option<f64>{
         match self {
@@ -13,11 +15,13 @@ impl Data {
     }
 }
 
+#[allow(dead_code)]
 pub struct Stack {
     stack: Vec<Data>,
     frame_index: usize,
 }
 
+#[allow(dead_code)]
 impl Stack {
     pub fn new(capacity: usize) -> Stack {
         let mut stack =  Vec::<Data>::with_capacity(capacity);
@@ -96,12 +100,14 @@ impl Stack {
     }
 }
 
+#[allow(dead_code)]
 pub struct Matrix {
     pub memory: Box<[f64]>,
     width: usize,
     height: usize,
 }
 
+#[allow(dead_code)]
 impl Matrix {
     pub fn new(width: usize, height: usize) -> Matrix {
         Matrix{memory: vec![0.0; width*height].into_boxed_slice(), width, height}

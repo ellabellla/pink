@@ -65,7 +65,8 @@ mod macros {
     #[macro_export]
     macro_rules! is_next_continue {
         ($parser:ident.$tokenizer:ident, Token::$pattern:ident$(($($vars:ident)*))? ) => {
-            if let fallback = $parser.$tokenizer.pos() {
+            {
+                let fallback = $parser.$tokenizer.pos();
                 if let Some(token) = $parser.$tokenizer.next() { 
                     match token {
                         Token::$pattern$(($($vars)*))?=> Ok(token),
@@ -79,8 +80,6 @@ mod macros {
                     let (pos, line, line_index) = fallback;
                     Err(ParseError::new(format!(stringify!(expected Token::$pattern at line: {} and index: {}), line, pos - line_index)))
                 }
-            } else {
-                panic!("unreachable code");
             }
         };
     }
@@ -131,10 +130,9 @@ mod macros {
     #[macro_export]
     macro_rules! create_parse_error {
         ($parser:ident.$tokenizer:ident, $err:tt) => {
-            if let (pos, line, line_index) = $parser.$tokenizer.pos() {
+            {
+                let (pos, line, line_index) = $parser.$tokenizer.pos();
                 Err(ParseError::new(format!(stringify!($err at line: {} and index: {}), line, pos - line_index)))
-            } else {
-                panic!("unreachable code");
             }
         };
     }
@@ -142,10 +140,9 @@ mod macros {
     #[macro_export]
     macro_rules! create_token_parse_error {
         ($parser:ident.$tokenizer:ident, $(Token::$pattern:ident$(($($vars:ident)*))? $(,)?)+) => {
-            if let (pos, line, line_index) = $parser.$tokenizer.pos() {
+            {
+                let (pos, line, line_index) = $parser.$tokenizer.pos();
                 Err(ParseError::new(format!(stringify!(expected $(Token::$pattern, )* at line: {} and index: {}), line, pos - line_index)))
-            } else {
-                panic!("unreachable code");
             }
         };
     }
@@ -184,7 +181,7 @@ struct Parser<'a> {
 }
 
 pub fn parse(tokenizer: &mut Tokenizer) -> AbstractSyntaxTree {
-    let mut tree = AbstractSyntaxTree{root: Box::new(ASTNode::new(ASTNodeType::Root, vec![]))};
+    let tree = AbstractSyntaxTree{root: Box::new(ASTNode::new(ASTNodeType::Root, vec![]))};
     let mut parser = Parser{tokenizer: tokenizer, tree};
 
     if let Err(err) = parse_root(&mut parser) {
@@ -195,7 +192,7 @@ pub fn parse(tokenizer: &mut Tokenizer) -> AbstractSyntaxTree {
 }
 
 fn parse_root(parser: &mut Parser) -> Result<(), ParseError> {
-    let mut fallback = parser.tokenizer.pos();
+    let fallback = parser.tokenizer.pos();
     let mut statement = parse_statement(parser);
     while let Ok(child) = statement {
         parser.tree.root.children.push(child);
@@ -230,20 +227,15 @@ fn parse_number(parser: &mut Parser) ->  Result<Box<ASTNode>, ParseError> {
 
 fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let mut token = create_parse_error!(parser.tokenizer, "expected a reference") ;
-    if let Ok(found_token) =  is_next_continue!(parser.tokenizer, Token::Pop) {
-        token = Ok(found_token);
-    } else if let Ok(found_token) = is_next_continue!(parser.tokenizer, Token::Peek) {
-        token = Ok(found_token);
-    } else {
-        token = Ok(Token::Identifier(get_next!(parser.tokenizer, fallback, Token::Identifier(ident))?));
-    }
-
-    if let Ok(token) = token {
-        Ok(Box::new(ASTNode::new(ASTNodeType::Reference(token), vec![])))
-    } else {
-        Err(token.err().unwrap())
-    }
+    Ok(Box::new(ASTNode::new(ASTNodeType::Reference(
+        if let Ok(found_token) =  is_next_continue!(parser.tokenizer, Token::Pop) {
+            found_token
+        } else if let Ok(found_token) = is_next_continue!(parser.tokenizer, Token::Peek) {
+            found_token
+        } else {
+            Token::Identifier(get_next!(parser.tokenizer, fallback, Token::Identifier(ident))?)
+        }
+    ), vec![])))
 }
 
 fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -259,9 +251,9 @@ fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Ok(Box::new(ASTNode{node_type: ASTNodeType::Operator(found_token), children: vec![
             Box::new(ASTNode::new(ASTNodeType::Number(number), vec![]))
         ]}))
-    } else if let Ok(found_token) = is_next_continue!(parser.tokenizer, Token::True) {
+    } else if is_next_continue!(parser.tokenizer, Token::True).is_ok() {
         Ok(Box::new(ASTNode::new(ASTNodeType::Number(1.0), vec![])))
-    } else if let Ok(found_token) = is_next_continue!(parser.tokenizer, Token::False) {
+    } else if is_next_continue!(parser.tokenizer, Token::False).is_ok() {
         Ok(Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![])))
     } else if let Ok(node) = parse_exec(parser) {
         return Ok(node)
@@ -329,7 +321,7 @@ fn parse_expression(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let mut lhs = get_or_fallback!(parser.tokenizer, fallback, parse_expression_3rd)?;
 
     if found_negative {
-        let mut operator = Box::new(ASTNode::new(ASTNodeType::Operator(Token::Subtract), vec![
+        let operator = Box::new(ASTNode::new(ASTNodeType::Operator(Token::Subtract), vec![
             Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![])),
             lhs
         ]));
@@ -563,7 +555,7 @@ fn parse_indexed_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> 
 }
 
 fn parse_meta(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
-    let mut fallback = parser.tokenizer.pos();
+    let fallback = parser.tokenizer.pos();
 
     is_next!(parser.tokenizer, fallback, Token::OpenBrace)?;
 
@@ -588,7 +580,7 @@ fn parse_meta(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn parse_statement(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let mut statement_type = StatementType::Push;
+    let statement_type;
     let mut children  = vec![];
     children.push(or!(parser.tokenizer, "expected an expression or definition", fallback, parse_definition, parse_expression)?);
     
@@ -610,9 +602,7 @@ fn parse_statement(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 #[cfg(test)]
 mod tests {
     use crate::{lexer::Tokenizer, parser::AbstractSyntaxTree};
-
-    use super::parse;
-
+    
     #[test]
     fn test_arithmetic() {
         assert_parse_eq!(r"
