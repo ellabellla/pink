@@ -11,8 +11,8 @@ pop = "@";
 if = "?";
 into = "<-";
 exec = "->";
-reduce_exec = "*>";
-into_exec = "<*";
+reduce = "*>";
+for_each = "<*";
 
 add_set = "+:";
 sub_set = "-:";
@@ -49,13 +49,13 @@ operator_4th = and | or | xor;
 
 expression = expression_3rd (operator_4th expression_3rd)*;
 expression_3rd = expression_2nd (operator_3rd expression_2nd)*;
-expression_2nd = expression_3rd (operator_2nd expression_3rd)*;
-expression_3rd = expression_value (operator_1st expression_value)*;
+expression_2nd = expression_1st (operator_2nd expression_1st)*;
+expression_1st = expression_value (operator_1st expression_value)*;
 expression_value = value;
 
 definition = identifier setters expression;
 
-expression_list = '[' ((expression | definition) ((',' | ';') (expression | definition))* (',' | ';')?)? ']';
+expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
 exec = expression_list | (tuple exec expression);
 into = (meta | tuple | indexed_value | reference) into exec;
