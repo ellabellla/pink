@@ -605,58 +605,71 @@ mod tests {
     
     #[test]
     fn test_arithmetic() {
-        assert_parse_eq!(r"
-            2+2*3-1/2;
-        ", "(((((Number(2.0))((Number(2.0))(Number(3.0))Operator(Multiply))Operator(Add))((Number(1.0))(Number(2.0))Operator(Divide))Operator(Subtract))Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"2+2*3-1/2;",
+            "(((((Number(2.0))((Number(2.0))(Number(3.0))Operator(Multiply))Operator(Add))((Number(1.0))(Number(2.0))Operator(Divide))Operator(Subtract))Statement(Throw))Root)"
+        );
     }
 
     #[test]
     fn test_arithmetic_bracketed() {
-        assert_parse_eq!(r"
-            (2+2)*6;
-        ", "((((((Number(2.0))(Number(2.0))Operator(Add))Tuple)(Number(6.0))Operator(Multiply))Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"(2+2)*6;", 
+            "((((((Number(2.0))(Number(2.0))Operator(Add))Tuple)(Number(6.0))Operator(Multiply))Statement(Throw))Root)"
+        );
     }
 
     #[test]
     fn test_comparator() {
-        assert_parse_eq!(r"
-            1+2<3;
-        ", "(((((Number(1.0))(Number(2.0))Operator(Add))(Number(3.0))Operator(LessThan))Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"1+2<3;", 
+            "(((((Number(1.0))(Number(2.0))Operator(Add))(Number(3.0))Operator(LessThan))Statement(Throw))Root)"
+        );
     }
 
     #[test]
     fn test_logic() {
-        assert_parse_eq!(r"
-            2*3and10*2;
-        ", "(((((Number(2.0))(Number(3.0))Operator(Multiply))((Number(10.0))(Number(2.0))Operator(Multiply))Operator(And))Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"2*3and10*2;", 
+            "(((((Number(2.0))(Number(3.0))Operator(Multiply))((Number(10.0))(Number(2.0))Operator(Multiply))Operator(And))Statement(Throw))Root)"
+        );
     }
 
     #[test]
     fn test_refs() {
-        assert_parse_eq!(r"
-            var*2;
-            2*@;
-            @@*@;
-        ", "((((Reference(Identifier(\"var\")))(Number(2.0))Operator(Multiply))Statement(Throw))(((Number(2.0))(Reference(Pop))Operator(Multiply))Statement(Throw))(((Reference(Peek))(Reference(Pop))Operator(Multiply))Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"
+                var*2;
+                2*@;
+                @@*@;
+            ", 
+            "((((Reference(Identifier(\"var\")))(Number(2.0))Operator(Multiply))Statement(Throw))(((Number(2.0))(Reference(Pop))Operator(Multiply))Statement(Throw))(((Reference(Peek))(Reference(Pop))Operator(Multiply))Statement(Throw))Root)"
+        );
     }
 
     #[test]
     fn test_values() {
-        assert_parse_eq!(r"
-             10;
-             !10;
-             true;
-             false;
-        ", "(((Number(10.0))Statement(Throw))(((Number(10.0))Operator(Not))Statement(Throw))((Number(1.0))Statement(Throw))((Number(0.0))Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"
+                10;
+                !10;
+                true;
+                false;
+            ", 
+            "(((Number(10.0))Statement(Throw))(((Number(10.0))Operator(Not))Statement(Throw))((Number(1.0))Statement(Throw))((Number(0.0))Statement(Throw))Root)"
+        );
     }
 
     #[test]
     fn test_meta() {
-        assert_parse_eq!(r"
-             {1},
-             {1;2},
-             var{1;2};
-        ", "(((Meta(1))Statement(Push))((Meta2D(1, 2))Statement(Push))(((Reference(Identifier(\"var\")))(Meta2D(1, 2))Indexed)Statement(Throw))Root)");
+        assert_parse_eq!(
+            r"
+                {1},
+                {1;2},
+                var{1;2};
+            ", 
+            "(((Meta(1))Statement(Push))((Meta2D(1, 2))Statement(Push))(((Reference(Identifier(\"var\")))(Meta2D(1, 2))Indexed)Statement(Throw))Root)"
+        );
     }
 
     #[test]
@@ -686,5 +699,4 @@ mod tests {
         assert_parse_eq!("(1+2);", "(((((Number(1.0))(Number(2.0))Operator(Add))Tuple)Statement(Throw))Root)");
         assert_parse_eq!("(var:10);", "(((((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple)Statement(Throw))Root)");
     }
-
 }
