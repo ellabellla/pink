@@ -46,19 +46,21 @@ operator_1st = mul | div;
 operator_2nd = add | sub;
 operator_3rd = less_equ | great_equ | less | great | equ;
 operator_4th = and | or | xor;
+operator_5th = if;
 
-expression = expression_3rd (operator_4th expression_3rd)*;
+expression = expression_4th (operator_5th expression_4th)*;
+expression_4yj = expression_3rd (operator_4th expression_3rd)*;
 expression_3rd = expression_2nd (operator_3rd expression_2nd)*;
 expression_2nd = expression_1st (operator_2nd expression_1st)*;
 expression_1st = expression_value (operator_1st expression_value)*;
 expression_value = value;
 
-definition = identifier setters expression;
-strict_definition = identifier set expression;
+definition = identifier setters (expression | meta);
+strict_definition = identifier set (expression | meta);
 
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
-exec = expression_list | (tuple exec expression_list);
+exec = expression_list | (tuple exec expression_list | identifier);
 into = (meta | tuple | indexed_value | reference) into exec;
 for_each = (meta | tuple | indexed_value | reference) into_exec exec;
 reduce = (meta | tuple | indexed_value | reference) reduce_exec exec;
