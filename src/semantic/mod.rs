@@ -210,6 +210,7 @@ pub fn validate(ast: &mut AbstractSyntaxTree) -> Result<(), SemanticError> {
         for i in 0..ast.root.children.len() {
             validate_statement(&mut data, &mut ast.root.children[i])?;
         }
+        ast.root.annotations.push(Annotation::Scope(data.globals.len()));
         Ok(())
     } else {
         let root = &mut ast.root;
