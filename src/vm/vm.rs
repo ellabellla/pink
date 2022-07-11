@@ -80,6 +80,10 @@ pub enum Instr {
     SetDynTuple(Reference, Reference, Reference),
 
     Jump(usize),
+    JumpLesser(usize, Reference, Reference),
+    JumpGreater(usize, Reference, Reference),
+    JumpLesserOrEqual(usize, Reference, Reference),
+    JumpGreaterOrEqual(usize, Reference, Reference),
 }
 
 #[allow(dead_code)]
@@ -246,6 +250,46 @@ impl VM {
                     self.instr_pointer = pointer;
 
                     return;
+                },
+                Instr::JumpLesser(pointer, a, b)  => {
+                    let res  = VM::eval_binary_op(self, a, b, &instr_ops::lesser);
+                    if let Some(res) = res {
+                        if res == 1.0 {
+                            self.instr_pointer = pointer
+                        }
+                    } else {
+                        panic!("VM failed to eval instr");
+                    }
+                },
+                Instr::JumpGreater(pointer, a, b)  => {
+                    let res  = VM::eval_binary_op(self, a, b, &instr_ops::greater);
+                    if let Some(res) = res {
+                        if res == 1.0 {
+                            self.instr_pointer = pointer
+                        }
+                    } else {
+                        panic!("VM failed to eval instr");
+                    }
+                },
+                Instr::JumpLesserOrEqual(pointer, a, b)  => {
+                    let res  = VM::eval_binary_op(self, a, b, &instr_ops::lesser_equal);
+                    if let Some(res) = res {
+                        if res == 1.0 {
+                            self.instr_pointer = pointer
+                        }
+                    } else {
+                        panic!("VM failed to eval instr");
+                    }
+                },
+                Instr::JumpGreaterOrEqual(pointer, a, b)  => {
+                    let res  = VM::eval_binary_op(self, a, b, &instr_ops::greater_equal);
+                    if let Some(res) = res {
+                        if res == 1.0 {
+                            self.instr_pointer = pointer
+                        }
+                    } else {
+                        panic!("VM failed to eval instr");
+                    }
                 },
                 Instr::Duplicate => {
                     let data = self.stack.peek();
