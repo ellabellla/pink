@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::lexer::{Tokenizer, Token};
-use super::{AbstractSyntaxTree, ASTNode, ASTNodeType, StatementType};
+use super::{AbstractSyntaxTree, ASTNode, ASTNodeType, StatementType, Annotation};
 
 #[macro_use] 
 mod macros {
@@ -64,14 +64,14 @@ mod macros {
 
     #[macro_export]
     macro_rules! is_next_continue {
-        ($parser:ident.$tokenizer:ident, Token::$pattern:ident$(($($vars:ident)*))? ) => {
+        ($tokenizer:expr, Token::$pattern:ident$(($($vars:ident)*))? ) => {
             {
-                let fallback = $parser.$tokenizer.pos();
-                if let Some(token) = $parser.$tokenizer.next() { 
+                let fallback = $tokenizer.pos();
+                if let Some(token) = $tokenizer.next() { 
                     match token {
                         Token::$pattern$(($($vars)*))?=> Ok(token),
                         _ => {
-                            $parser.$tokenizer.seek(fallback);
+                            $tokenizer.seek(fallback);
                             let (pos, line, line_index) = fallback;
                             Err(ParseError::new(format!(stringify!(expected Token::$pattern at line: {} and index: {}), line, pos - line_index)))
                         }
@@ -150,7 +150,7 @@ mod macros {
     #[macro_export]
     macro_rules! assert_parse_eq {
         ($input:tt, $output:tt) => {
-            assert_eq!(AbstractSyntaxTree::new(&mut Tokenizer::new($input)).to_string(), $output);
+            assert_eq!(AbstractSyntaxTree::new(&mut Tokenizer::new($input)).to_string(false), $output);
         };
     }
 }
@@ -181,7 +181,7 @@ struct Parser<'a> {
 }
 
 pub fn parse(tokenizer: &mut Tokenizer) -> AbstractSyntaxTree {
-    let tree = AbstractSyntaxTree{root: Box::new(ASTNode::new(ASTNodeType::Root, vec![], tokenizer.pos()))};
+    let tree = AbstractSyntaxTree{root: Box::new(ASTNode::new(ASTNodeType::Root, vec![], Annotation::pos_to_debug(tokenizer.pos())))};
     let mut parser = Parser{tokenizer: tokenizer, tree};
 
     if let Err(err) = parse_root(&mut parser) {
@@ -215,13 +215,13 @@ fn parse_setters(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Token::MultiplyAndSet,
         Token::DivideAndSet,
     )?;
-    Ok(Box::new(ASTNode::new(ASTNodeType::Set(token), vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Set(token), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_number(parser: &mut Parser) ->  Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
     let number = get_next!(parser.tokenizer, fallback, Token::Number(_num))?;
-    Ok(Box::new(ASTNode::new(ASTNodeType::Number(number), vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Number(number), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 
@@ -235,7 +235,7 @@ fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         } else {
             Token::Identifier(get_next!(parser.tokenizer, fallback, Token::Identifier(ident))?)
         }
-    ), vec![], parser.tokenizer.pos())))
+    ), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -249,12 +249,12 @@ fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     } else if let Ok(found_token) = is_next_continue!(parser.tokenizer, Token::Not) {
         let number = get_next!(parser.tokenizer, fallback, Token::Number(_num))?;
         Ok(Box::new(ASTNode::new(ASTNodeType::Operator(found_token), vec![
-            Box::new(ASTNode::new(ASTNodeType::Number(number), vec![], parser.tokenizer.pos()))
-        ], parser.tokenizer.pos())))
+            Box::new(ASTNode::new(ASTNodeType::Number(number), vec![], Annotation::pos_to_debug(parser.tokenizer.pos())))
+        ], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if is_next_continue!(parser.tokenizer, Token::True).is_ok() {
-        Ok(Box::new(ASTNode::new(ASTNodeType::Number(1.0), vec![], parser.tokenizer.pos())))
+        Ok(Box::new(ASTNode::new(ASTNodeType::Number(1.0), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if is_next_continue!(parser.tokenizer, Token::False).is_ok() {
-        Ok(Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![], parser.tokenizer.pos())))
+        Ok(Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if let Ok(node) = parse_exec(parser) {
         return Ok(node)
     } else if let Ok(node) = parse_reduce(parser) {
@@ -278,7 +278,7 @@ fn parse_operator_1st(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Token::Multiply,
         Token::Divide,
     )?;
-    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_operator_2nd(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -287,7 +287,7 @@ fn parse_operator_2nd(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Token::Add,
         Token::Subtract,
     )?;
-    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_operator_3rd(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -299,7 +299,7 @@ fn parse_operator_3rd(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Token::LessThanOrEqual,
         Token::GreaterThanOrEqual,
     )?;
-    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_operator_4th(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -309,25 +309,63 @@ fn parse_operator_4th(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Token::Or,
         Token::Xor,
     )?;
-    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
+
+fn parse_operator_5th(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
+    let fallback = parser.tokenizer.pos();
+    let token = is_next_any!(parser.tokenizer, fallback, 
+        Token::If,
+    )?;
+    Ok(Box::new(ASTNode::new(ASTNodeType::Operator(token), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+}
+
 
 
 fn parse_expression(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
     let found_negative = is_next_continue!(parser.tokenizer, Token::Subtract).is_ok();
-    let mut lhs = get_or_fallback!(parser.tokenizer, fallback, parse_expression_3rd)?;
+    let mut lhs = get_or_fallback!(parser.tokenizer, fallback, parse_expression_4th)?;
 
     if found_negative {
         let operator = Box::new(ASTNode::new(ASTNodeType::Operator(Token::Subtract), vec![
-            Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![], parser.tokenizer.pos())),
+            Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))),
             lhs
-        ], parser.tokenizer.pos()));
+        ], Annotation::pos_to_debug(parser.tokenizer.pos())));
         lhs = operator;
     }
 
+    while let Ok(mut operator) = parse_operator_5th(parser) {
+        let rhs = match operator.node_type {
+            ASTNodeType::Operator(Token::If) => {
+                get_or_fallback!(parser.tokenizer, fallback, parse_tuple)?
+            },
+            _ => {
+                get_or_fallback!(parser.tokenizer, fallback, parse_expression_4th)?
+            }
+        };
+
+        operator.children.push(lhs);
+        operator.children.push(rhs);
+        lhs = operator;
+    }  
+
+    Ok(lhs)
+}
+
+fn parse_expression_4th(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
+    let fallback = parser.tokenizer.pos();
+    let mut lhs = get_or_fallback!(parser.tokenizer, fallback, parse_expression_3rd)?;
+
     while let Ok(mut operator) = parse_operator_4th(parser) {
-        let rhs = get_or_fallback!(parser.tokenizer, fallback, parse_expression_3rd)?;
+        let rhs = match operator.node_type {
+            ASTNodeType::Operator(Token::If) => {
+                get_or_fallback!(parser.tokenizer, fallback, parse_tuple)?
+            },
+            _ => {
+                get_or_fallback!(parser.tokenizer, fallback, parse_expression_3rd)?
+            }
+        };
 
         operator.children.push(lhs);
         operator.children.push(rhs);
@@ -400,8 +438,8 @@ fn parse_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
     let identifier = is_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
     let mut setter: Box<ASTNode> = get_or_fallback!(parser.tokenizer, fallback, parse_setters)?;
-    setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], parser.tokenizer.pos())));
-    let expression: Box<ASTNode> = get_or_fallback!(parser.tokenizer, fallback, parse_expression)?;
+    setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))));
+    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta or expression", fallback, parse_expression, parse_meta)?;
     setter.children.push(expression);
 
     Ok(setter)
@@ -409,11 +447,11 @@ fn parse_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn parse_strict_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let mut setter = Box::new(ASTNode::new(ASTNodeType::Set(Token::Set), vec![], parser.tokenizer.pos()));
+    let mut setter = Box::new(ASTNode::new(ASTNodeType::Set(Token::Set), vec![], Annotation::pos_to_debug(parser.tokenizer.pos())));
     let identifier = is_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
-    setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], parser.tokenizer.pos())));
+    setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))));
     is_next!(parser.tokenizer, fallback, Token::Set)?;
-    let expression: Box<ASTNode> = get_or_fallback!(parser.tokenizer, fallback, parse_expression)?;
+    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta or expression", fallback, parse_expression, parse_meta)?;
     setter.children.push(expression);
 
     Ok(setter)
@@ -430,17 +468,17 @@ fn parse_expression_list(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError
         children.push(node);
         size += 1;
     } else if is_next_continue!(parser.tokenizer, Token::CloseBracket).is_ok() {
-        return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, parser.tokenizer.pos())))
+        return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else {
         return create_parse_error!(parser.tokenizer, "expected an expression or definition")
     }
 
     if is_next_continue!(parser.tokenizer, Token::CloseBracket).is_ok() {
-        return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, parser.tokenizer.pos())))
+        return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if is_next_continue!(parser.tokenizer, Token::SeparateAndPush).is_ok() {
-        children.push(Box::new(ASTNode::new(ASTNodeType::Push, vec![], parser.tokenizer.pos())))
+        children.push(Box::new(ASTNode::new(ASTNodeType::Push, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if is_next_continue!(parser.tokenizer, Token::Separate).is_ok() {
-        children.push(Box::new(ASTNode::new(ASTNodeType::Throw, vec![], parser.tokenizer.pos())))
+        children.push(Box::new(ASTNode::new(ASTNodeType::Throw, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else {
         let err = create_token_parse_error!(parser.tokenizer, Token::CloseBracket, Token::SeparateAndPush, Token::Separate);
         parser.tokenizer.seek(fallback);
@@ -449,18 +487,18 @@ fn parse_expression_list(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError
 
     loop {
         if is_next_continue!(parser.tokenizer, Token::CloseBracket).is_ok() {
-            return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, parser.tokenizer.pos())))
+            return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
         }
 
         children.push(or!(parser.tokenizer, "expected an expression or definition", fallback, parse_expression, parse_definition)?);
         size += 1;
 
         if is_next_continue!(parser.tokenizer, Token::SeparateAndPush).is_ok() {
-            children.push(Box::new(ASTNode::new(ASTNodeType::Push, vec![], parser.tokenizer.pos())))
+            children.push(Box::new(ASTNode::new(ASTNodeType::Push, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else if is_next_continue!(parser.tokenizer, Token::Separate).is_ok() {
-            children.push(Box::new(ASTNode::new(ASTNodeType::Throw, vec![], parser.tokenizer.pos())))
+            children.push(Box::new(ASTNode::new(ASTNodeType::Throw, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else if is_next_continue!(parser.tokenizer, Token::CloseBracket).is_ok() {
-            return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, parser.tokenizer.pos())))
+            return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else {
             let err = create_token_parse_error!(parser.tokenizer, Token::CloseBracket, Token::SeparateAndPush, Token::Separate);
             parser.tokenizer.seek(fallback);
@@ -477,7 +515,13 @@ fn parse_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     if let Ok(tuple) = parse_tuple(parser) {
         if is_next_continue!(parser.tokenizer, Token::Exec).is_ok() {
             if let Ok(expression_list) = parse_expression_list(parser) {
-                res =Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![tuple, expression_list], parser.tokenizer.pos())))
+                res = Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![tuple, expression_list], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+            } else {
+                let ident = get_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
+                res = Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![
+                    tuple,
+                    Box::new(ASTNode::new(ASTNodeType::Reference(Token::Identifier(ident)), vec![], Annotation::pos_to_debug(parser.tokenizer.pos())))    
+                ], Annotation::pos_to_debug(parser.tokenizer.pos()))))
             }
         }
     }
@@ -496,7 +540,7 @@ fn  parse_into(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     is_next!(parser.tokenizer, fallback, Token::Into)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
-    Ok(Box::new(ASTNode::new(ASTNodeType::Into,  vec![data, exec], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Into,  vec![data, exec], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn  parse_for_each(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -505,7 +549,7 @@ fn  parse_for_each(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     is_next!(parser.tokenizer, fallback, Token::ForEach)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
-    Ok(Box::new(ASTNode::new(ASTNodeType::ForEach,  vec![data, exec], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::ForEach,  vec![data, exec], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn  parse_reduce(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -514,7 +558,7 @@ fn  parse_reduce(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     is_next!(parser.tokenizer, fallback, Token::Reduce)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
-    Ok(Box::new(ASTNode::new(ASTNodeType::Reduce,  vec![data, exec], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Reduce,  vec![data, exec], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 
@@ -529,16 +573,16 @@ fn  parse_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         children.push(node);
         size += 1;
     } else if is_next_continue!(parser.tokenizer, Token::CloseParentheses).is_ok() {
-        return Ok(Box::new(ASTNode::new( ASTNodeType::Tuple(size), children, parser.tokenizer.pos())))
+        return Ok(Box::new(ASTNode::new( ASTNodeType::Tuple(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else {
         return create_parse_error!(parser.tokenizer, "expected an expression or strict definition");
     }
 
     loop {
         if is_next_continue!(parser.tokenizer, Token::Separate).is_ok() {
-            children.push(Box::new(ASTNode::new(ASTNodeType::Throw, vec![], parser.tokenizer.pos())))
+            children.push(Box::new(ASTNode::new(ASTNodeType::Throw, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else if is_next_continue!(parser.tokenizer, Token::CloseParentheses).is_ok() {
-            return Ok(Box::new(ASTNode::new( ASTNodeType::Tuple(size), children, parser.tokenizer.pos())))
+            return Ok(Box::new(ASTNode::new( ASTNodeType::Tuple(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else {
             let err = create_token_parse_error!(parser.tokenizer, Token::Separate, Token::CloseParentheses);
             parser.tokenizer.seek(fallback);
@@ -546,7 +590,7 @@ fn  parse_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         }
         
         size += 1;
-        children.push(or!(parser.tokenizer, "expected an expression or strict definition", fallback, parse_expression, parse_strict_definition)?);
+        children.push(or!(parser.tokenizer, "expected an expression or strict definition", fallback, parse_strict_definition, parse_expression)?);
     }
 }
 
@@ -555,7 +599,7 @@ fn parse_indexed_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> 
     let reference = get_or_fallback!(parser.tokenizer, fallback, parse_reference)?;
     let meta = get_or_fallback!(parser.tokenizer, fallback, parse_meta)?;
 
-    Ok(Box::new(ASTNode::new(ASTNodeType::Indexed,  vec![reference, meta], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ASTNodeType::Indexed,  vec![reference, meta], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_meta(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -578,7 +622,7 @@ fn parse_meta(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
     is_next!(parser.tokenizer, fallback, Token::CloseBrace)?;
 
-    Ok(Box::new(ASTNode::new(ast_type, vec![], parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new(ast_type, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     
 }
 
@@ -599,7 +643,7 @@ fn parse_statement(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         return err;
     }
     
-    Ok(Box::new(ASTNode::new( ASTNodeType::Statement(statement_type),  children , parser.tokenizer.pos())))
+    Ok(Box::new(ASTNode::new( ASTNodeType::Statement(statement_type),  children , Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 
@@ -619,7 +663,15 @@ mod tests {
     fn test_arithmetic_bracketed() {
         assert_parse_eq!(
             r"(2+2)*6;", 
-            "((((((Number(2.0))(Number(2.0))Operator(Add))Tuple)(Number(6.0))Operator(Multiply))Statement(Throw))Root)"
+            "((((((Number(2.0))(Number(2.0))Operator(Add))Tuple(1))(Number(6.0))Operator(Multiply))Statement(Throw))Root)"
+        );
+    }
+
+    #[test]
+    fn test_arithmetic_if() {
+        assert_parse_eq!(
+            r"2*2 ? (2; 2);",
+            "(((((Number(2.0))(Number(2.0))Operator(Multiply))((Number(2.0))(Throw)(Number(2.0))Tuple(2))Operator(If))Statement(Throw))Root)"
         );
     }
 
@@ -666,42 +718,38 @@ mod tests {
 
     #[test]
     fn test_meta() {
-        assert_parse_eq!(
-            r"
-                {1},
-                {1;2},
-                var{1;2};
-            ", 
-            "(((Meta(1))Statement(Push))((Meta2D(1, 2))Statement(Push))(((Reference(Identifier(\"var\")))(Meta2D(1, 2))Indexed)Statement(Throw))Root)"
-        );
+        assert_parse_eq!("var{1;2};", "((((Reference(Identifier(\"var\")))(Meta2D(1, 2))Indexed)Statement(Throw))Root)");
+        assert_parse_eq!("var1:{1};", "((((Reference(Identifier(\"var1\")))(Meta(1))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("var2:{1;2};", "((((Reference(Identifier(\"var2\")))(Meta2D(1, 2))Set(Set))Statement(Throw))Root)");
     }
 
     #[test]
     fn test_func() {
-        assert_parse_eq!(r"()->[];", "((((Tuple)(ExpressionList)Exec)Statement(Throw))Root)");
+        assert_parse_eq!(r"()->[];", "((((Tuple(0))(ExpressionList(0))Exec)Statement(Throw))Root)");
 
-        assert_parse_eq!(r"()*>[];", "((((Tuple)(ExpressionList)Reduce)Statement(Throw))Root)");
+        assert_parse_eq!(r"()*>[];", "((((Tuple(0))(ExpressionList(0))Reduce)Statement(Throw))Root)");
 
-        assert_parse_eq!(r"()<-[];", "((((Tuple)(ExpressionList)Into)Statement(Throw))Root)");
+        assert_parse_eq!(r"()<-[];", "((((Tuple(0))(ExpressionList(0))Into)Statement(Throw))Root)");
 
-        assert_parse_eq!(r"()<*[];", "((((Tuple)(ExpressionList)ForEach)Statement(Throw))Root)");
+        assert_parse_eq!(r"()<*[];", "((((Tuple(0))(ExpressionList(0))ForEach)Statement(Throw))Root)");
     }
 
     #[test]
     fn test_expression_list() {
-        assert_parse_eq!("[];", "(((ExpressionList)Statement(Throw))Root)");
-        assert_parse_eq!("[1,2];", "((((Number(1.0))(Push)(Number(2.0))ExpressionList)Statement(Throw))Root)");
-        assert_parse_eq!("[1;2];", "((((Number(1.0))(Throw)(Number(2.0))ExpressionList)Statement(Throw))Root)");
-        assert_parse_eq!("[1+2];", "(((((Number(1.0))(Number(2.0))Operator(Add))ExpressionList)Statement(Throw))Root)");
-        assert_parse_eq!("[var:10];", "(((((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))ExpressionList)Statement(Throw))Root)");
+        assert_parse_eq!("[];", "(((ExpressionList(0))Statement(Throw))Root)");
+        assert_parse_eq!("[1,2];", "((((Number(1.0))(Push)(Number(2.0))ExpressionList(2))Statement(Throw))Root)");
+        assert_parse_eq!("[1;2];", "((((Number(1.0))(Throw)(Number(2.0))ExpressionList(2))Statement(Throw))Root)");
+        assert_parse_eq!("[1+2];", "(((((Number(1.0))(Number(2.0))Operator(Add))ExpressionList(1))Statement(Throw))Root)");
+        assert_parse_eq!("[var:10];", "(((((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))ExpressionList(1))Statement(Throw))Root)");
     }
 
     #[test]
     fn test_tuple() {
-        assert_parse_eq!("();", "(((Tuple)Statement(Throw))Root)");
-        assert_parse_eq!("(1;2);", "((((Number(1.0))(Throw)(Number(2.0))Tuple)Statement(Throw))Root)");
-        assert_parse_eq!("(1+2);", "(((((Number(1.0))(Number(2.0))Operator(Add))Tuple)Statement(Throw))Root)");
-        assert_parse_eq!("(var:10);", "(((((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple)Statement(Throw))Root)");
+        assert_parse_eq!("();", "(((Tuple(0))Statement(Throw))Root)");
+        assert_parse_eq!("(1;2);", "((((Number(1.0))(Throw)(Number(2.0))Tuple(2))Statement(Throw))Root)");
+        assert_parse_eq!("(var;2);", "((((Reference(Identifier(\"var\")))(Throw)(Number(2.0))Tuple(2))Statement(Throw))Root)");
+        assert_parse_eq!("(1+2);", "(((((Number(1.0))(Number(2.0))Operator(Add))Tuple(1))Statement(Throw))Root)");
+        assert_parse_eq!("(var:10);", "(((((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple(1))Statement(Throw))Root)");
     }
 
     #[test]
