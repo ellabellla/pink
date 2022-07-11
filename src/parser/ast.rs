@@ -48,6 +48,7 @@ pub enum ASTNodeType {
 pub enum Annotation {
     Id(usize),
     GlobalId(usize),
+    PullThrough,
     Scope(Scope),
     DebugInfo(usize, usize),
 }
