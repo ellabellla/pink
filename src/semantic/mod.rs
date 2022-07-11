@@ -344,7 +344,7 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
     );    
     let scope = data.stack.pop().unwrap();
     if res.is_ok() {
-        node.annotations.push(Annotation::Scope(scope));
+        node.annotations.push(Annotation::Scope(scope.variables.len()));
     }
     res
 }

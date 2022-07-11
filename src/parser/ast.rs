@@ -1,7 +1,6 @@
 use std::vec;
 
 use crate::lexer::{Token, Tokenizer};
-use crate::semantic::Scope;
 
 use super::parse;
 
@@ -49,7 +48,7 @@ pub enum Annotation {
     Id(usize),
     GlobalId(usize),
     PullThrough,
-    Scope(Scope),
+    Scope(usize),
     DebugInfo(usize, usize),
 }
 
