@@ -19,13 +19,13 @@ pub enum ASTNodeType {
     ForEach,
     Into,
 
-    ExpressionList,
+    ExpressionList(usize),
     Push,
     Throw,
 
     Set(Token),
 
-    Tuple,
+    Tuple(usize),
 
     Indexed,
     
@@ -40,14 +40,21 @@ pub enum ASTNodeType {
     Root,
 }
 
+#[allow(dead_code)]
+pub enum Annotation {
+    Id(usize),
+    DebugInfo(usize, usize, usize),
+}
+
 pub struct ASTNode {
     pub node_type: ASTNodeType,
     pub children: Vec<Box<ASTNode>>,
+    pub annotations: Vec<Annotation>,
 }
 
 impl ASTNode {
-    pub fn new(node_type: ASTNodeType, children: Vec<Box<ASTNode>>) ->  ASTNode{
-        ASTNode { node_type, children }
+    pub fn new(node_type: ASTNodeType, children: Vec<Box<ASTNode>>, debug_info: (usize, usize, usize)) ->  ASTNode{
+        ASTNode { node_type, children, annotations: vec![Annotation::DebugInfo(debug_info.0, debug_info.1, debug_info.2)] }
     }
 }
 
