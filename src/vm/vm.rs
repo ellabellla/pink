@@ -1,9 +1,30 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, str::{FromStr, Chars}, fmt, iter::Peekable};
 
 use super::{Stack, Data, Matrix};
 
+pub struct InstrError {
+    msg: String
+}
+
 #[allow(dead_code)]
-#[derive(Clone, Copy)]
+impl InstrError {
+    pub fn new(msg: String) -> InstrError {
+        InstrError { msg }
+    }
+
+    pub fn to_string(&self) -> String {
+        self.msg.clone()
+    }
+}
+
+impl fmt::Display for InstrError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.msg)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Reference {
     Stack,
     Bank(usize),
@@ -12,6 +33,85 @@ pub enum Reference {
     Tuple(usize),
     DynamicTuple(usize),
     None,
+}
+
+impl Default for Reference {
+    fn default() -> Self {
+        Reference::None
+    }
+}
+
+impl Reference {
+    fn from_str(chars: &mut Peekable<Chars>) -> Result<Self, InstrError> {
+        while let Some(c) = chars.peek() {
+            if *c == ' ' {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if let Some(header) = chars.peek() {
+            let mut ref_type = Reference::None;
+            match header {
+                '@' => {
+                    return Ok(Reference::Stack)
+                },
+                'B' => {
+                    ref_type = Reference::Bank(0);
+                },
+                'M' => {
+                    ref_type = Reference::Matrix(0,0);
+                },
+                'T' => {
+                    ref_type = Reference::Tuple(0);
+                },
+                'R' => {
+                    ref_type = Reference::DynamicTuple(0);
+                },
+                _ => (),
+            }
+
+            if !matches!(ref_type, Reference::None) {
+                chars.next();
+
+                let index = parse_number(chars)?;
+
+                match ref_type {
+                    Reference::Bank(_) => return Ok(Reference::Bank(index.floor() as usize)),
+                    Reference::Matrix(_, _) => {
+                        if let Some(delimiter) = chars.next() {
+                            if delimiter == ','{
+                                let index2 = parse_number(chars)?;
+                                return Ok(Reference::Matrix(index.floor() as usize, index2.floor() as usize))
+                            }
+                        }
+                        return Err(InstrError::new("Expected delimiter ','".to_string()));
+                    },
+                    Reference::Tuple(_) => return Ok(Reference::Tuple(index.floor() as usize)),
+                    Reference::DynamicTuple(_) => return Ok(Reference::DynamicTuple(index.floor() as usize)),
+                    _ => (),
+                }
+            }
+        }
+
+        let number = parse_number(chars)?;
+
+        Ok(Reference::Literal(number))
+    }
+}
+
+impl ToString for Reference {
+    fn to_string(&self) -> String {
+        match self {
+            Reference::Stack => String::from("@"),
+            Reference::Bank(index) => String::from(format!("B{}", index)),
+            Reference::Matrix(x, y) => String::from(format!("M{},{}", x, y)),
+            Reference::Literal(number) => String::from(format!("{}", number)),
+            Reference::Tuple(index) => String::from(format!("T{}", index)),
+            Reference::DynamicTuple(index) => String::from(format!("R{}", index)),
+            Reference::None => String::from(""),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -41,8 +141,47 @@ impl Reference {
     }
 }
 
+pub fn parse_number(chars: &mut Peekable<Chars>) -> Result<f64, InstrError>{
+    while let Some(c) = chars.peek() {
+        if *c == ' ' {
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    let mut data = Vec::new();
+
+    let mut found_dot  = false;
+
+    while let Some(character) = chars.peek() {
+        if !found_dot && *character == '.' {
+            found_dot = true;
+            data.push(*character)
+        } else if !character.is_digit(10) {
+            break;
+        } else {
+            data.push(*character)
+        }
+        chars.next();
+    }
+
+    if data.len() == 0 {
+        return Err(InstrError::new("Couldn't parse reference, no number was given".to_string()))
+    }
+
+    let string: String = data.iter().collect();
+    match string.parse::<f64>() {
+        Ok(number) => {
+            Ok(number)
+        },
+        Err(_) => {
+            return Err(InstrError::new("Couldn't parse reference, invalid number".to_string()))
+        }
+    }
+}
+
 #[allow(dead_code)]
-#[derive(Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Instr {
     Add(Reference, Reference),
     Sub(Reference, Reference),
@@ -84,6 +223,100 @@ pub enum Instr {
     JumpGreater(usize, Reference, Reference),
     JumpLesserOrEqual(usize, Reference, Reference),
     JumpGreaterOrEqual(usize, Reference, Reference),
+}
+
+impl FromStr for Instr {
+    type Err = InstrError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut chars = s.chars().peekable();
+        let mut instr = vec![];
+
+        const INSTR_LEN: usize = 4;
+        for _ in 0..INSTR_LEN {
+            if let Some(char) = chars.next() {
+                instr.push(char)
+            } else {
+                return Err(InstrError::new("instr string not lone enough".to_string()))
+            }
+        }
+
+        chars.next();
+        let instr: String = instr.iter().collect();
+        match instr.as_str() {
+            "ADDX" => Ok(Instr::Add(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "SUBX" => Ok(Instr::Sub(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "MULX" => Ok(Instr::Multiply(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "DIVX" => Ok(Instr::Divide(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "EQUL" => Ok(Instr::Equal(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "LESS" => Ok(Instr::Lesser(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "GRET" => Ok(Instr::Greater(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "LSEQ" => Ok(Instr::LesserEqual(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "GREQ" => Ok(Instr::GreaterEqual(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "NOTX" => Ok(Instr::Not(Reference::from_str(&mut chars)?)),
+            "ANDX" => Ok(Instr::Add(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "ORXX" => Ok(Instr::Or(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "XORX" => Ok(Instr::Xor(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "COND" => Ok(Instr::Conditional(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "PUSH" => Ok(Instr::Push(Data::from_str(&mut chars)?)),
+            "DUPX" => Ok(Instr::Duplicate),
+            "SETM" => Ok(Instr::SetMatrix(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "PSHF" => Ok(Instr::PushFrame(Reference::from_str(&mut chars)?)),
+            "POPF" => Ok(Instr::PopFrame(Reference::from_str(&mut chars)?)),
+            "GETA" => Ok(Instr::GetArg(Reference::from_str(&mut chars)?)),
+            "SETA" => Ok(Instr::SetArg(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "GETB" => Ok(Instr::GetBank(Reference::from_str(&mut chars)?)),
+            "SETB" => Ok(Instr::SetBank(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "CRUP" => Ok(Instr::CreateTuple(parse_number(&mut chars)?.floor() as usize, parse_number(&mut chars)?.floor() as usize)),
+            "RTUP" => Ok(Instr::RemoveTuple(parse_number(&mut chars)?.floor() as usize)),
+            "STDT" => Ok(Instr::SetDynTuple(Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "JMPX" => Ok(Instr::Jump(parse_number(&mut chars)?.floor() as usize)),
+            "JPLS" => Ok(Instr::JumpLesser(parse_number(&mut chars)?.floor() as usize, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "JPGR" => Ok(Instr::JumpGreater(parse_number(&mut chars)?.floor() as usize, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "JPLE" => Ok(Instr::JumpLesserOrEqual(parse_number(&mut chars)?.floor() as usize, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            "JPGE" => Ok(Instr::JumpGreaterOrEqual(parse_number(&mut chars)?.floor() as usize, Reference::from_str(&mut chars)?, Reference::from_str(&mut chars)?)),
+            _ => Err(InstrError::new("couldn't parse instr".to_string()))
+        }
+
+    }
+}
+
+impl ToString for Instr {
+    fn to_string(&self) -> String {
+        match self {
+            Instr::Add(a, b) => format!("ADDX {} {}", a.to_string(), b.to_string()),
+            Instr::Sub(a, b) => format!("SUBX {} {}", a.to_string(), b.to_string()),
+            Instr::Multiply(a,  b) => format!("MULX {} {}", a.to_string(), b.to_string()),
+            Instr::Divide(a,  b) => format!("DIVX {} {}", a.to_string(), b.to_string()),
+            Instr::Equal(a,  b) => format!("EQUL {} {}", a.to_string(), b.to_string()),
+            Instr::Lesser(a,  b) => format!("LESS {} {}", a.to_string(), b.to_string()),
+            Instr::Greater(a,  b) => format!("GRET {} {}", a.to_string(), b.to_string()),
+            Instr::LesserEqual(a,  b) => format!("LSEQ {} {}", a.to_string(), b.to_string()),
+            Instr::GreaterEqual(a,  b) => format!("GREQ {} {}", a.to_string(), b.to_string()),
+            Instr::Not(a) => format!("NOTX {}", a.to_string()),
+            Instr::And(a,  b) => format!("ANDX {} {}", a.to_string(), b.to_string()),
+            Instr::Or(a,  b) => format!("ORXX {} {}", a.to_string(), b.to_string()),
+            Instr::Xor(a,  b) => format!("XORX {} {}", a.to_string(), b.to_string()),
+            Instr::Conditional(a,  b, c) => format!("COND {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::Push(a) => format!("PUSH {}", a.to_string()),
+            Instr::Duplicate => "DUPX".to_string(),
+            Instr::SetMatrix(a,  b, c) => format!("SETM {} {}, {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::PushFrame(a) => format!("PSHF {}", a.to_string()),
+            Instr::PopFrame(a) => format!("POPF {}", a.to_string()),
+            Instr::GetArg(a) => format!("GETA {}", a.to_string()),
+            Instr::SetArg(a,  b) => format!("SETA {} {}", a.to_string(), b.to_string()),
+            Instr::GetBank(a) => format!("GETB {}", a.to_string()),
+            Instr::SetBank(a,  b) => format!("SETB {} {}", a.to_string(), b.to_string()),
+            Instr::CreateTuple(a,  b) => format!("CRUP {} {}", a.to_string(), b.to_string()),
+            Instr::RemoveTuple(a) => format!("RTUP {}", a.to_string()),
+            Instr::SetDynTuple(a,  b, c) => format!("STDT {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::Jump(a) => format!("JMPX {}", a.to_string()),
+            Instr::JumpLesser(a,  b, c) => format!("JPLS {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::JumpGreater(a,  b, c) => format!("JPGR {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::JumpLesserOrEqual(a,  b, c) => format!("JPLE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::JumpGreaterOrEqual(a,  b, c) => format!("JPGE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -195,9 +428,11 @@ impl VM {
                     return;
                 },
                 Instr::PopFrame(res) => {
-                    self.stack.pop_frame();
                     if let Some(res) = res.to_number(0, self) {
+                        self.stack.pop_frame();
                         self.stack.push(Data::Number(res));
+                    } else {
+                        self.stack.pop_frame();
                     }
                 },
                 Instr::SetMatrix(a, b, c) => {
@@ -417,5 +652,7 @@ mod test {
         vm.run();
 
         assert_eq!(vm.stack.pop().unwrap(), Data::Number(6.0));
+
+
     }
 }

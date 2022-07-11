@@ -1,3 +1,7 @@
+use std::{str::Chars, iter::Peekable};
+
+use super::{InstrError, parse_number};
+
 #[allow(dead_code)]
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Data {
@@ -11,6 +15,45 @@ impl Data {
         match self {
             Data::Number(num) => Some(*num),
             Data::Frame(_, _) => None,
+        }
+    }
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        Data::Number(0.0)
+    }
+}
+
+impl Data {
+
+    pub fn from_str(chars: &mut Peekable<Chars>) -> Result<Self, InstrError> {
+        if let Some(c) = chars.peek() {
+            if *c == 'F' {
+                chars.next();
+                let index = parse_number(chars)?;
+                if let Some(c) = chars.next() {
+                    if c == ',' {
+                        let index2 = parse_number(chars)?;
+                        return Ok(Data::Frame(index.floor() as usize, index2.floor() as usize))
+                    }
+                }
+
+            } else {
+                let index = parse_number(chars)?;
+                return Ok(Data::Number(index))
+            }
+        } 
+
+        Err(InstrError::new("couldn't parse data".to_string()))
+    }
+}
+
+impl ToString for Data {
+    fn to_string(&self) -> String {
+        match self {
+            Data::Number(num) => format!("{}", num),
+            Data::Frame(argc, _) => format!("F{}", argc),
         }
     }
 }
