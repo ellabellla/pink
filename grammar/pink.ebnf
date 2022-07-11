@@ -41,7 +41,7 @@ number = digit+ ('.' digit*)? | '.' digit+;
 identifier = (alpha | '_') (alpha | digit | '_')*;
 
 reference = identifier | pop | peek;
-value = number | not number | true | false | indexed_value | reference | exec | reduce | for_each | into | tuple | meta;
+value = number | not number | true | false | indexed_value | reference | exec | reduce | for_each | into | tuple;
 operator_1st = mul | div;
 operator_2nd = add | sub;
 operator_3rd = less_equ | great_equ | less | great | equ;
@@ -54,15 +54,16 @@ expression_1st = expression_value (operator_1st expression_value)*;
 expression_value = value;
 
 definition = identifier setters expression;
+strict_definition = identifier set expression;
 
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
-exec = expression_list | (tuple exec expression);
+exec = expression_list | (tuple exec expression_list);
 into = (meta | tuple | indexed_value | reference) into exec;
 for_each = (meta | tuple | indexed_value | reference) into_exec exec;
 reduce = (meta | tuple | indexed_value | reference) reduce_exec exec;
 
-tuple = '(' ((definition | expression) (';' (definition | expression))*)? ')';
+tuple = '(' ((strict_definition | expression) (';' (strict_definition | expression))*)? ')';
 
 indexed_value = reference meta;
 meta = '{' number (';' number)? '}'
