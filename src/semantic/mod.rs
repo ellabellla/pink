@@ -332,7 +332,14 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
             ret
         },
         ASTNodeType::Indexed => validate_indexed(data, node),
-        ASTNodeType::Reference(_) => validate_reference(data, node, pull_through),
+        ASTNodeType::Reference(_) => {
+            let var_type = VariableType::node_to_type(data, node);
+            if matches!(var_type, Ok(VariableType::Tuple)) ||
+                matches!(var_type, Ok(VariableType::Matrix)) {
+                    return create_semantic_error!(node, "reference cannot be to a tuple or matrix in an expression")
+            }
+            validate_reference(data, node, pull_through)
+        },
         ASTNodeType::Number(_) => Ok(()),
         _ => create_semantic_error!(node, "invalid value")
     }
@@ -340,8 +347,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
 
 fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     data.stack.push(Scope::new());
-    let res = validate_expression_list(data, node)
-    .or_else(|_| 
+    let res = {
         validate_exec_tuple(data, &mut node.children[0])
         .and_then(|_| {
             let ident = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference))
@@ -375,7 +381,7 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
             }
 
         })
-    );    
+    };    
     let scope = data.stack.pop().unwrap();
     if res.is_ok() {
         node.annotations.push(Annotation::Scope(scope.variables.len()));
@@ -384,14 +390,17 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
 }
 
 fn validate_extended_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
-    validate_exec(data, &mut node.children[1])?;
+    validate_exec(data, &mut node.children[1]).or_else(|_| validate_expression_list(data, &mut node.children[1]))?;
     match &node.children[0].node_type {
         ASTNodeType::Meta => Ok(()),
         ASTNodeType::Meta2D => Ok(()),
         ASTNodeType::Tuple(_) => validate_tuple(data, node),
-        ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Reference(Token::Identifier(ident)) => {
             if let Some(variable) = data.globals.variables.get(ident) {
+                if !matches!(variable.var_type, VariableType::Matrix) && 
+                    !matches!(variable.var_type, VariableType::Tuple)  {
+                        return create_semantic_error!(node, "variable must be a matrix or tuple type");
+                } 
                 node.children[0].annotations.push(Annotation::GlobalId(variable.id));
                 if matches!(variable.var_type, VariableType::Executable) {
                     node.children[0].annotations.push(Annotation::Executable);
@@ -403,6 +412,10 @@ fn validate_extended_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> R
             } else {
                 let scope = is!(data.stack.last(), "variable must be defined before it is used", Some(scope))?;
                 let variable = is!(scope.variables.get(ident), "variable must be defined before it is used", Some(variable))?;
+                if !matches!(variable.var_type, VariableType::Matrix) && 
+                    !matches!(variable.var_type, VariableType::Tuple)  {
+                        return create_semantic_error!(node, "variable must be a matrix or tuple type");
+                } 
                 node.children[0].annotations.push(Annotation::Id(variable.id));
                 if matches!(variable.var_type, VariableType::Executable) {
                     node.children[0].annotations.push(Annotation::Executable);
