@@ -1,6 +1,6 @@
 use std::vec;
 
-use crate::lexer::{Token, Tokenizer};
+use crate::{lexer::{Token, Tokenizer}};
 
 use super::parse;
 
@@ -31,8 +31,8 @@ pub enum ASTNodeType {
 
     Indexed,
     
-    Meta2D(usize, usize),
-    Meta(usize),
+    Meta2D,
+    Meta,
 
     Reference(Token),
     Number(f64),
@@ -47,7 +47,9 @@ pub enum ASTNodeType {
 pub enum Annotation {
     Id(usize),
     GlobalId(usize),
-    PullThrough,
+    Executable,
+    ExpressionList,
+    PullThrough(usize),
     Scope(usize),
     DebugInfo(usize, usize),
 }
