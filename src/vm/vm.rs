@@ -130,6 +130,7 @@ impl ToString for Reference {
     }
 }
 
+#[allow(dead_code)]
 pub enum Instr {
     Add(Reference, Reference),
     Subtract(Reference, Reference),
@@ -187,6 +188,7 @@ pub enum Instr {
 
 
 impl Instr {
+    #[allow(dead_code)]
     fn from_str(chars: &mut Peekable<Chars>) -> Result<Self, InstrError> {
         let mut instr = vec![];
 
@@ -447,7 +449,7 @@ mod instr_ops {
         if or != 0.0 && and == 0.0 { Ok(Some(1.0)) } else { Ok(Some(0.0)) }
     }
 
-    pub fn conditional(a: f64, b: f64, c: f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+    pub fn conditional(a: f64, b: f64, c: f64, _vm: &mut VM) -> Result<Option<f64>, InstrError>{
         Ok(Some(if a != 0.0 { b } else { c }))
     }
 
@@ -624,6 +626,7 @@ pub struct VM {
 }
 
 impl VM {
+    #[allow(dead_code)]
     pub fn new(globals_capacity: usize, stack_capacity: usize, instrs: Vec<Instr>, instr_pointer: usize)-> VM {
         VM { 
             globals: vec![Reference::None; globals_capacity], 
@@ -635,6 +638,7 @@ impl VM {
         }
     }
 
+    #[allow(dead_code)]
     pub fn run(&mut self) {
         while self.instr_pointer < self.instrs.len() {
             if let Err(err) = self.eval_instr() {
@@ -709,7 +713,7 @@ impl VM {
                     }
                 },
                 Instr::SetArg(a, b) => {
-                    if let Some(reference) = self.stack.set_arg(a, b) {
+                    if let Some(_) = self.stack.set_arg(a, b) {
                         Ok(None)
                     } else {
                         Err(InstrError::new("args index out of bounds"))
@@ -842,6 +846,7 @@ impl VM {
         }
     }
 
+    #[allow(dead_code)]
     fn eval_binary_op_fixed2(&mut self, a: usize, b: usize,op: &dyn Fn(usize, usize, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
         op(a,b, self)
     }
@@ -876,6 +881,7 @@ impl VM {
         }
     }
 
+    #[allow(dead_code)]
     fn eval_trinary_op_fixed2(&mut self, a: usize, b: usize, c: Reference,op: &dyn Fn(usize, usize, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
         let c = c.to_number(2, 0, self);
         
@@ -888,6 +894,7 @@ impl VM {
         }
     }
 
+    #[allow(dead_code)]
     fn eval_quadnary_op(&mut self, a: Reference, b: Reference, c: Reference, d: Reference,op: &dyn Fn(f64, f64, f64, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
         let a = a.to_number(0, 0, self);
         let b = b.to_number(1, 0, self);
