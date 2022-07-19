@@ -157,6 +157,8 @@ pub enum Instr {
     RemoveMatrix(usize),
     GetMatrix(usize, Reference, Reference),
     SetMatrix(usize, Reference, Reference, Reference),
+    WidthMatrix(usize),
+    HeightMatrix(usize),
 
     PushFrame(usize, usize),
     PopFrame(Reference),
@@ -170,6 +172,7 @@ pub enum Instr {
     RemoveTuple(usize),
     GetTuple(usize, Reference),
     SetTuple(usize, Reference, Reference),
+    LenTuple(usize),
 
     Jump(usize),
     JumpLesser(usize, Reference, Reference),
@@ -216,6 +219,8 @@ impl Instr {
             "RMMT" => Ok(Instr::RemoveMatrix(parse_usize(chars)?)),
             "GETM" => Ok(Instr::GetMatrix(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "SETM" => Ok(Instr::SetMatrix(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "WDMT" => Ok(Instr::WidthMatrix(parse_usize(chars)?)),
+            "HTMT" => Ok(Instr::HeightMatrix(parse_usize(chars)?)),
             "PSHF" => Ok(Instr::PushFrame(parse_usize(chars)?, parse_usize(chars)?)),
             "POPF" => Ok(Instr::PopFrame(Reference::from_str(chars)?)),
             "GETA" => Ok(Instr::GetArg(parse_usize(chars)?)),
@@ -226,6 +231,7 @@ impl Instr {
             "RTUP" => Ok(Instr::RemoveTuple(parse_usize(chars)?)),
             "GETT" => Ok(Instr::GetTuple(parse_usize(chars)?, Reference::from_str(chars)?)),
             "SETT" => Ok(Instr::SetTuple(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "LNUP" => Ok(Instr::LenTuple(parse_usize(chars)?)),
             "JMPX" => Ok(Instr::Jump(parse_number(chars)?.floor() as usize)),
             "JPLS" => Ok(Instr::JumpLesser(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPGR" => Ok(Instr::JumpGreater(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
@@ -261,6 +267,8 @@ impl ToString for Instr {
             Instr::RemoveMatrix(a) => format!("RMMT {}", a.to_string()),
             Instr::GetMatrix(a,  b, c) => format!("GETM {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::SetMatrix(a,  b, c, d) => format!("SETM {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
+            Instr::WidthMatrix(a) => format!("WDMT {}", a.to_string()),
+            Instr::HeightMatrix(a) => format!("HTMT {}", a.to_string()),
             Instr::PushFrame(a, b) => format!("PSHF {} {}", a.to_string(), b.to_string()),
             Instr::PopFrame(a) => format!("POPF {}", a.to_string()),
             Instr::GetArg(a) => format!("GETA {}", a.to_string()),
@@ -271,6 +279,7 @@ impl ToString for Instr {
             Instr::RemoveTuple(a) => format!("RTUP {}", a.to_string()),
             Instr::GetTuple(a,  b) => format!("GETT {} {}", a.to_string(), b.to_string()),
             Instr::SetTuple(a,  b, c) => format!("SETT {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::LenTuple(a) => format!("LNUP {}", a.to_string()),
             Instr::Jump(a) => format!("JMPX {}", a.to_string()),
             Instr::JumpLesser(a,  b, c) => format!("JPLS {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpGreater(a,  b, c) => format!("JPGR {} {} {}", a.to_string(), b.to_string(), c.to_string()),
@@ -469,6 +478,21 @@ mod instr_ops {
         }
     }   
 
+    pub fn width_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(matrix) = vm.matrices.get(&a) {
+            Ok(Some(matrix.width() as f64))
+        } else {
+            Err(InstrError::new("could not get matrix"))
+        }
+    }
+
+    pub fn height_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(matrix) = vm.matrices.get(&a) {
+            Ok(Some(matrix.height() as f64))
+        } else {
+            Err(InstrError::new("could not get matrix"))
+        }
+    }
     pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         vm.stack.push(Data::Frame(a, 0, b));
         Ok(None)
@@ -486,6 +510,13 @@ mod instr_ops {
             Ok(None)
         } else {
             Err(InstrError::new("couldn't remove tuple"))
+        }
+    }
+    pub fn len_tuple(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(tuples) = vm.tuples.get(&a) {
+            Ok(Some(tuples.len() as f64))
+        } else {
+            Err(InstrError::new("could not get tuple"))
         }
     }
     pub fn jump(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -601,6 +632,8 @@ impl VM {
                 Instr::RemoveMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::remove_matrix),
                 Instr::GetMatrix(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::get_matrix),
                 Instr::SetMatrix(a, b, c, d) => self.eval_quadnary_op_fixed(a, b, c, d, &instr_ops::set_matrix),
+                Instr::WidthMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::width_matrix),
+                Instr::HeightMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::height_matrix),
                 Instr::PushFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_frame),
                 Instr::PopFrame(a) => {
                     if let Some(instr_pointer) = self.stack.pop_frame() {
@@ -676,6 +709,7 @@ impl VM {
                         Err(InstrError::new("reference does not resolve to a number"))
                     }
                 },
+                Instr::LenTuple(a) => self.eval_unary_op_fixed(a, &instr_ops::len_tuple),
                 Instr::Jump(a) => self.eval_unary_op_fixed(a, &instr_ops::jump),
                 Instr::JumpLesser(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_lesser),
                 Instr::JumpGreater(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater),
