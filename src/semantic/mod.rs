@@ -222,7 +222,7 @@ pub fn validate(ast: &mut AbstractSyntaxTree) -> Result<(), SemanticError> {
 fn validate_statement(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     for i in 0..node.children.len() {
         if let ASTNodeType::Set(_) = node.children[i].node_type {
-            validate_definition(data, &mut node.children[i], false)?;
+            validate_definition(data, &mut node.children[i], false, true)?;
         } else {
             validate_expression(data, &mut node.children[i], false)?;
         }
@@ -230,7 +230,7 @@ fn validate_statement(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resul
     Ok(())
 }
 // name: 1000 + 200;
-fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<(), SemanticError> {
+fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool, allow_creation: bool) -> Result<(), SemanticError> {
     let set_type = is!(&node.node_type, "expected definition", ASTNodeType::Set(set_type))?;
     validate_expression(data, &mut node.children[1], pull_through)?;
     let reference = is!(&node.children[0].node_type, "expected identifier in definition", ASTNodeType::Reference(reference))?;
@@ -282,13 +282,17 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
     } else {
         match set_type {
             Token::Set => {
-                let id = data.new_global_id();
-                data.globals.variables.insert(ident.clone(), Variable::new(id, var_type));
-                node.children[0].annotations.push(Annotation::GlobalId(id));
-                if matches!(var_type, VariableType::Executable) {
-                    node.children[0].annotations.push(Annotation::Executable);
+                if allow_creation {
+                    let id = data.new_global_id();
+                    data.globals.variables.insert(ident.clone(), Variable::new(id, var_type));
+                    node.children[0].annotations.push(Annotation::GlobalId(id));
+                    if matches!(var_type, VariableType::Executable) {
+                        node.children[0].annotations.push(Annotation::Executable);
+                    }
+                    Ok(())
+                } else {
+                    create_semantic_error!(node, "variable creation is not allowed in this scope")
                 }
-                Ok(())
             },
             _ => {
                 create_semantic_error!(node, "a variable must first be defined before it is modified")
@@ -321,7 +325,12 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Reduce => validate_extended_exec(data, node),
         ASTNodeType::ForEach => validate_extended_exec(data, node),
         ASTNodeType::Into => validate_extended_exec(data, node),
-        ASTNodeType::ExpressionList(_) => validate_expression_list(data, node),
+        ASTNodeType::ExpressionList(_) => {
+            data.stack.push(Scope::new());
+            let ret = validate_expression_list(data, node, false);
+            data.stack.pop();
+            ret
+        },
         ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Reference(_) => validate_reference(data, node, pull_through),
         ASTNodeType::Number(_) => Ok(()),
@@ -331,34 +340,40 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
 
 fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     data.stack.push(Scope::new());
-    let res = validate_expression_list(data, node)
+    let res = validate_expression_list(data, node, true)
     .or_else(|_| 
         validate_exec_tuple(data, &mut node.children[0])
         .and_then(|_| {
-            let ident = is!(&node.children[0].node_type, "expected identifier", ASTNodeType::Reference(reference))
+            let ident = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference))
             .and_then(|reference| is!(reference, "expected identifier", Token::Identifier(ident)));
 
             if let Ok(ident) = ident {
+                if let Some(variable) = data.globals.variables.get(ident) {
+                    if matches!(variable.var_type, VariableType::ExpressionList) {
+                        node.children[1].annotations.push(Annotation::GlobalId(variable.id));
+                        node.children[1].annotations.push(Annotation::Executable);
+                        return Ok(())
+                    } else {
+                        return create_semantic_error!(node, "identifier must be an expression list");
+                    }
+                }
+
                 if let Some(scope) = data.stack.last() {
                     if let Some(variable) = scope.variables.get(ident) {
-                        if matches!(variable.var_type, VariableType::Executable) {
-                            node.children[0].annotations.push(Annotation::Id(variable.id));
-                            node.children[0].annotations.push(Annotation::Executable);
+                        if matches!(variable.var_type, VariableType::ExpressionList) {
+                            node.children[1].annotations.push(Annotation::Id(variable.id));
+                            node.children[1].annotations.push(Annotation::ExpressionList);
                             return Ok(())
                         }
+                    } else {
+                        return create_semantic_error!(node, "identifier must be an expression list");
                     }
                 }
-                if let Some(variable) = data.globals.variables.get(ident) {
-                    if matches!(variable.var_type, VariableType::Executable) {
-                        node.children[0].annotations.push(Annotation::GlobalId(variable.id));
-                        node.children[0].annotations.push(Annotation::Executable);
-                        return Ok(())
-                    }
-                }
+                create_semantic_error!(node, "identifier must already be defined")
+            } else {
+                validate_expression_list(data, &mut node.children[1], false)
             }
 
-
-            validate_expression_list(data, &mut node.children[1])
         })
     );    
     let scope = data.stack.pop().unwrap();
@@ -401,12 +416,12 @@ fn validate_extended_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> R
     }
 }
 
-fn validate_expression_list(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
+fn validate_expression_list(data: &mut SemanticData, node: &mut Box<ASTNode>, allow_creation: bool) -> Result<(), SemanticError> {
     for i in 0..node.children.len() {
         if matches!(node.children[i].node_type, ASTNodeType::Throw) || matches!(node.children[i].node_type, ASTNodeType::Push) {
             continue;
         } else {
-            validate_definition(data, &mut node.children[i], false)
+            validate_definition(data, &mut node.children[i], false, allow_creation)
             .or_else(|_| validate_expression(data, &mut node.children[i], false))?
         }
     }
@@ -419,7 +434,7 @@ fn validate_tuple(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<()
         if matches!(node.children[i].node_type, ASTNodeType::Throw) || matches!(node.children[i].node_type, ASTNodeType::Push) {
             continue;
         } else {
-            validate_definition(data, &mut node.children[i], false)
+            validate_definition(data, &mut node.children[i], false, true)
             .or_else(|_| validate_expression(data, &mut node.children[i], false))?
         }
     }
@@ -431,7 +446,7 @@ fn validate_exec_tuple(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resu
         if matches!(node.children[i].node_type, ASTNodeType::Throw) || matches!(node.children[i].node_type, ASTNodeType::Push) {
             continue;
         } else {
-            validate_definition(data, &mut node.children[i], false)
+            validate_definition(data, &mut node.children[i], true, true)
             .or_else(|_| validate_expression(data, &mut node.children[i], true))?
         }
     }
