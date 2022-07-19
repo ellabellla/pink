@@ -61,11 +61,12 @@ strict_definition = identifier set (expression | meta | tuple);
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
 exec = expression_list | (tuple exec (expression_list | identifier));
-into = (meta | tuple | indexed_value | reference) into exec;
-for_each = (meta | tuple | indexed_value | reference) into_exec exec;
-reduce = (meta | tuple | indexed_value | reference) reduce_exec exec;
+into = (meta | value_tuple | reference) into exec;
+for_each = (meta | value_tuple | reference) into_exec exec;
+reduce = (meta | value_tuple | reference) reduce_exec exec;
 
 tuple = '(' ((strict_definition | expression) (';' (strict_definition | expression))*)? ')';
+value_tuple = '(' (expression (';' expression)*)? ')';
 
 indexed_value = reference meta;
 meta = '{' expression (';' expression)? '}'
