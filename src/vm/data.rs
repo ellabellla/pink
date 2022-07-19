@@ -177,12 +177,33 @@ impl Matrix {
         }
     }
 
+    pub fn get_flat(&self, x:usize) -> Option<f64> {
+        if x >= self.memory.len() {
+            None
+        } else {
+            Some(self.memory[x])
+        }
+    }
+
+    pub fn set_flat(&mut self, x:usize, number:f64) -> Option<f64> {
+        if x >= self.memory.len() {
+            None
+        } else {
+            self.memory[x] = number;
+            Some(number)
+        }
+    }
+
     pub fn width(&self) -> usize {
         self.width
     }
 
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    pub fn len(&self) -> usize {
+        self.memory.len()
     }
 }
 
