@@ -175,6 +175,7 @@ pub enum Instr {
     LenTuple(usize),
 
     Jump(usize),
+    JumpEqual(usize, Reference, Reference),
     JumpLesser(usize, Reference, Reference),
     JumpGreater(usize, Reference, Reference),
     JumpLesserOrEqual(usize, Reference, Reference),
@@ -233,6 +234,7 @@ impl Instr {
             "SETT" => Ok(Instr::SetTuple(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "LNUP" => Ok(Instr::LenTuple(parse_usize(chars)?)),
             "JMPX" => Ok(Instr::Jump(parse_number(chars)?.floor() as usize)),
+            "JPEQ" => Ok(Instr::JumpEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPLS" => Ok(Instr::JumpLesser(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPGR" => Ok(Instr::JumpGreater(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPLE" => Ok(Instr::JumpLesserOrEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
@@ -281,6 +283,7 @@ impl ToString for Instr {
             Instr::SetTuple(a,  b, c) => format!("SETT {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::LenTuple(a) => format!("LNUP {}", a.to_string()),
             Instr::Jump(a) => format!("JMPX {}", a.to_string()),
+            Instr::JumpEqual(a,  b, c) => format!("JPEQ {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpLesser(a,  b, c) => format!("JPLS {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpGreater(a,  b, c) => format!("JPGR {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpLesserOrEqual(a,  b, c) => format!("JPLE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
@@ -523,6 +526,15 @@ mod instr_ops {
         vm.instr_pointer = a;
         Ok(None)
     }
+    pub fn jump_equal(a: usize, b:  f64, c:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Ok(Some(res)) = equal(b, c, vm) {
+            if res != 0.0 {
+                vm.instr_pointer = a;
+            }
+        }
+
+        Ok(None)
+    }
     pub fn jump_lesser(a: usize, b:  f64, c:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Ok(Some(res)) = lesser(b, c, vm) {
             if res != 0.0 {
@@ -711,6 +723,7 @@ impl VM {
                 },
                 Instr::LenTuple(a) => self.eval_unary_op_fixed(a, &instr_ops::len_tuple),
                 Instr::Jump(a) => self.eval_unary_op_fixed(a, &instr_ops::jump),
+                Instr::JumpEqual(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_equal),
                 Instr::JumpLesser(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_lesser),
                 Instr::JumpGreater(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater),
                 Instr::JumpLesserOrEqual(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_lesser_equal),
