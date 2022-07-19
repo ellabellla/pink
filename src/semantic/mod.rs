@@ -327,7 +327,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Into => validate_extended_exec(data, node),
         ASTNodeType::ExpressionList(_) => {
             data.stack.push(Scope::new());
-            let ret = validate_expression_list(data, node, false);
+            let ret = validate_expression_list(data, node);
             data.stack.pop();
             ret
         },
@@ -340,7 +340,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
 
 fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     data.stack.push(Scope::new());
-    let res = validate_expression_list(data, node, true)
+    let res = validate_expression_list(data, node)
     .or_else(|_| 
         validate_exec_tuple(data, &mut node.children[0])
         .and_then(|_| {
@@ -371,7 +371,7 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
                 }
                 create_semantic_error!(node, "identifier must already be defined")
             } else {
-                validate_expression_list(data, &mut node.children[1], false)
+                validate_expression_list(data, &mut node.children[1])
             }
 
         })
@@ -416,12 +416,12 @@ fn validate_extended_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> R
     }
 }
 
-fn validate_expression_list(data: &mut SemanticData, node: &mut Box<ASTNode>, allow_creation: bool) -> Result<(), SemanticError> {
+fn validate_expression_list(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     for i in 0..node.children.len() {
         if matches!(node.children[i].node_type, ASTNodeType::Throw) || matches!(node.children[i].node_type, ASTNodeType::Push) {
             continue;
         } else {
-            validate_definition(data, &mut node.children[i], false, allow_creation)
+            validate_definition(data, &mut node.children[i], false, false)
             .or_else(|_| validate_expression(data, &mut node.children[i], false))?
         }
     }
