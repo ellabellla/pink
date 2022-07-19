@@ -157,10 +157,13 @@ pub enum Instr {
     RemoveMatrix(usize),
     GetMatrix(usize, Reference, Reference),
     SetMatrix(usize, Reference, Reference, Reference),
+    GetFlatMatrix(usize, Reference),
+    SetFlatMatrix(usize, Reference, Reference),
+    LenMatrix(usize),
     WidthMatrix(usize),
     HeightMatrix(usize),
 
-    PushFrame(usize, usize),
+    PushFrame(usize),
     PopFrame(Reference),
     GetArg(usize),
     SetArg(usize, Reference),
@@ -220,9 +223,12 @@ impl Instr {
             "RMMT" => Ok(Instr::RemoveMatrix(parse_usize(chars)?)),
             "GETM" => Ok(Instr::GetMatrix(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "SETM" => Ok(Instr::SetMatrix(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "GTFM" => Ok(Instr::GetFlatMatrix(parse_usize(chars)?, Reference::from_str(chars)?)),
+            "STFM" => Ok(Instr::SetFlatMatrix(parse_usize(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "LNMT" => Ok(Instr::LenMatrix(parse_usize(chars)?)),
             "WDMT" => Ok(Instr::WidthMatrix(parse_usize(chars)?)),
             "HTMT" => Ok(Instr::HeightMatrix(parse_usize(chars)?)),
-            "PSHF" => Ok(Instr::PushFrame(parse_usize(chars)?, parse_usize(chars)?)),
+            "PSHF" => Ok(Instr::PushFrame(parse_usize(chars)?)),
             "POPF" => Ok(Instr::PopFrame(Reference::from_str(chars)?)),
             "GETA" => Ok(Instr::GetArg(parse_usize(chars)?)),
             "SETA" => Ok(Instr::SetArg(parse_usize(chars)?, Reference::from_str(chars)?)),
@@ -269,9 +275,12 @@ impl ToString for Instr {
             Instr::RemoveMatrix(a) => format!("RMMT {}", a.to_string()),
             Instr::GetMatrix(a,  b, c) => format!("GETM {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::SetMatrix(a,  b, c, d) => format!("SETM {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
+            Instr::GetFlatMatrix(a,  b) => format!("GTFM {} {}", a.to_string(), b.to_string()),
+            Instr::SetFlatMatrix(a,  b, c) => format!("STFM {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::LenMatrix(a) => format!("LNMT {}", a.to_string()),
             Instr::WidthMatrix(a) => format!("WDMT {}", a.to_string()),
             Instr::HeightMatrix(a) => format!("HTMT {}", a.to_string()),
-            Instr::PushFrame(a, b) => format!("PSHF {} {}", a.to_string(), b.to_string()),
+            Instr::PushFrame(a) => format!("PSHF {}", a.to_string()),
             Instr::PopFrame(a) => format!("POPF {}", a.to_string()),
             Instr::GetArg(a) => format!("GETA {}", a.to_string()),
             Instr::SetArg(a,  b) => format!("SETA {} {}", a.to_string(), b.to_string()),
@@ -480,6 +489,38 @@ mod instr_ops {
             Err(InstrError::new("could not get matrix"))
         }
     }   
+    pub fn get_flat_matrix(a:usize, b:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(matrix) = vm.matrices.get(&a) {
+            if let Some(number) = matrix.get_flat(b.floor() as usize) {
+                Ok(Some(number))
+            } else{
+                Err(InstrError::new("could not get value in matrix"))
+            }
+        } else {
+            Err(InstrError::new("could not get matrix"))
+        }
+
+    }
+    
+    pub fn set_flat_matrix(a: usize, b:  f64, c:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(matrix) = vm.matrices.get_mut(&a) {
+            if let Some(number) = matrix.set_flat(b.floor() as usize, c) {
+                Ok(Some(number))
+            } else{
+                Err(InstrError::new("could not get value in matrix"))
+            }
+        } else {
+            Err(InstrError::new("could not get matrix"))
+        }
+    }   
+
+    pub fn len_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(matrix) = vm.matrices.get(&a) {
+            Ok(Some(matrix.len() as f64))
+        } else {
+            Err(InstrError::new("could not get matrix"))
+        }
+    }
 
     pub fn width_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Some(matrix) = vm.matrices.get(&a) {
@@ -496,8 +537,8 @@ mod instr_ops {
             Err(InstrError::new("could not get matrix"))
         }
     }
-    pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
-        vm.stack.push(Data::Frame(a, 0, b));
+    pub fn push_frame(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        vm.stack.push(Data::Frame(a, 0, vm.instr_pointer));
         Ok(None)
     }
 
@@ -644,9 +685,12 @@ impl VM {
                 Instr::RemoveMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::remove_matrix),
                 Instr::GetMatrix(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::get_matrix),
                 Instr::SetMatrix(a, b, c, d) => self.eval_quadnary_op_fixed(a, b, c, d, &instr_ops::set_matrix),
+                Instr::GetFlatMatrix(a, b) => self.eval_binary_op_fixed1(a, b, &instr_ops::get_flat_matrix),
+                Instr::SetFlatMatrix(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::set_flat_matrix),
+                Instr::LenMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::len_matrix),
                 Instr::WidthMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::width_matrix),
                 Instr::HeightMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::height_matrix),
-                Instr::PushFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_frame),
+                Instr::PushFrame(a) => self.eval_unary_op_fixed(a, &instr_ops::push_frame),
                 Instr::PopFrame(a) => {
                     if let Some(instr_pointer) = self.stack.pop_frame() {
                         self.instr_pointer = instr_pointer;
