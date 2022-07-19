@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, vec};
 
 use crate::lexer::{Tokenizer, Token};
 use super::{AbstractSyntaxTree, ASTNode, ASTNodeType, StatementType, Annotation};
@@ -263,8 +263,6 @@ fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         return Ok(node)
     } else if let Ok(node) = parse_into(parser) {
         return Ok(node)
-    } else if let Ok(node) = parse_tuple(parser) {
-        return Ok(node)
     } else {
         let err = create_parse_error!(parser.tokenizer, "expected a value");
         parser.tokenizer.seek(fallback);
@@ -422,16 +420,16 @@ fn parse_expression_1st(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError>
 
 fn parse_expression_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    Ok(or!(parser.tokenizer, "expected a value", fallback, parse_value)?)
+    Ok(or!(parser.tokenizer, "expected a value", fallback, parse_value, parse_expression_bracketed)?)
 }
 
-/*fn parse_expression_bracketed(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
+fn parse_expression_bracketed(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
     is_next!(parser.tokenizer, fallback, Token::OpenParentheses)?;
     let expression = get_or_fallback!(parser.tokenizer, fallback, parse_expression)?;
     is_next!(parser.tokenizer, fallback, Token::CloseParentheses)?;
     Ok(expression)
-}*/
+}
 
 
 fn parse_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -439,7 +437,7 @@ fn parse_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let identifier = is_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
     let mut setter: Box<ASTNode> = get_or_fallback!(parser.tokenizer, fallback, parse_setters)?;
     setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))));
-    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta or expression", fallback, parse_expression, parse_meta)?;
+    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta, expression or tuple", fallback, parse_expression, parse_meta, parse_tuple)?;
     setter.children.push(expression);
 
     Ok(setter)
@@ -451,7 +449,7 @@ fn parse_strict_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseErr
     let identifier = is_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
     setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))));
     is_next!(parser.tokenizer, fallback, Token::Set)?;
-    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta or expression", fallback, parse_expression, parse_meta)?;
+    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta, expression or tuple", fallback, parse_expression, parse_meta, parse_tuple)?;
     setter.children.push(expression);
 
     Ok(setter)
@@ -490,7 +488,7 @@ fn parse_expression_list(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError
             return Ok(Box::new(ASTNode::new( ASTNodeType::ExpressionList(size), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
         }
 
-        children.push(or!(parser.tokenizer, "expected an expression or definition", fallback, parse_expression, parse_definition)?);
+        children.push(or!(parser.tokenizer, "expected an expression or definition", fallback, parse_definition, parse_expression)?);
         size += 1;
 
         if is_next_continue!(parser.tokenizer, Token::SeparateAndPush).is_ok() {
@@ -607,22 +605,25 @@ fn parse_meta(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
     is_next!(parser.tokenizer, fallback, Token::OpenBrace)?;
 
-    let width = get_next!(parser.tokenizer, fallback, Token::Number(num))?;
+    let mut children = vec![];
+    children.push(parse_expression(parser)?);
+
     let mut height = create_parse_error!(parser.tokenizer, "expected a value") ;
 
     if is_next_continue!(parser.tokenizer, Token::Separate).is_ok() {
-        height = Ok(get_next!(parser.tokenizer, fallback, Token::Number(num))?);
+        height = parse_expression(parser);
     }
 
     let ast_type = if let Ok(height) = height {
-        ASTNodeType::Meta2D(width.floor() as usize, height.floor() as usize)
+        children.push(height);
+        ASTNodeType::Meta2D
     } else {
-        ASTNodeType::Meta(width.floor() as usize)
+        ASTNodeType::Meta
     };
 
     is_next!(parser.tokenizer, fallback, Token::CloseBrace)?;
 
-    Ok(Box::new(ASTNode::new(ast_type, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+    Ok(Box::new(ASTNode::new(ast_type, children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
     
 }
 
@@ -663,7 +664,7 @@ mod tests {
     fn test_arithmetic_bracketed() {
         assert_parse_eq!(
             r"(2+2)*6;", 
-            "((((((Number(2.0))(Number(2.0))Operator(Add))Tuple(1))(Number(6.0))Operator(Multiply))Statement(Throw))Root)"
+            "(((((Number(2.0))(Number(2.0))Operator(Add))(Number(6.0))Operator(Multiply))Statement(Throw))Root)"
         );
     }
 
@@ -718,9 +719,9 @@ mod tests {
 
     #[test]
     fn test_meta() {
-        assert_parse_eq!("var{1;2};", "((((Reference(Identifier(\"var\")))(Meta2D(1, 2))Indexed)Statement(Throw))Root)");
-        assert_parse_eq!("var1:{1};", "((((Reference(Identifier(\"var1\")))(Meta(1))Set(Set))Statement(Throw))Root)");
-        assert_parse_eq!("var2:{1;2};", "((((Reference(Identifier(\"var2\")))(Meta2D(1, 2))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("var{1;2};", "((((Reference(Identifier(\"var\")))((Number(1.0))(Number(2.0))Meta2D)Indexed)Statement(Throw))Root)");
+        assert_parse_eq!("var1:{1};", "((((Reference(Identifier(\"var1\")))((Number(1.0))Meta)Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("var2:{1;2};", "((((Reference(Identifier(\"var2\")))((Number(1.0))(Number(2.0))Meta2D)Set(Set))Statement(Throw))Root)");
     }
 
     #[test]
@@ -745,15 +746,16 @@ mod tests {
 
     #[test]
     fn test_tuple() {
-        assert_parse_eq!("();", "(((Tuple(0))Statement(Throw))Root)");
-        assert_parse_eq!("(1;2);", "((((Number(1.0))(Throw)(Number(2.0))Tuple(2))Statement(Throw))Root)");
-        assert_parse_eq!("(var;2);", "((((Reference(Identifier(\"var\")))(Throw)(Number(2.0))Tuple(2))Statement(Throw))Root)");
-        assert_parse_eq!("(1+2);", "(((((Number(1.0))(Number(2.0))Operator(Add))Tuple(1))Statement(Throw))Root)");
-        assert_parse_eq!("(var:10);", "(((((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple(1))Statement(Throw))Root)");
+        assert_parse_eq!("v:();", "((((Reference(Identifier(\"v\")))(Tuple(0))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("v:(1;2);", "((((Reference(Identifier(\"v\")))((Number(1.0))(Throw)(Number(2.0))Tuple(2))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("v:(var;2);", "((((Reference(Identifier(\"v\")))((Reference(Identifier(\"var\")))(Throw)(Number(2.0))Tuple(2))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("v:(1+2);", "((((Reference(Identifier(\"v\")))((Number(1.0))(Number(2.0))Operator(Add))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("v:(var:10);", "((((Reference(Identifier(\"v\")))(((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple(1))Set(Set))Statement(Throw))Root)");
     }
 
     #[test]
     fn test_definition() {
         assert_parse_eq!("var:10*10;", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(10.0))Operator(Multiply))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("var+:10*10;", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(10.0))Operator(Multiply))Set(AddAndSet))Statement(Throw))Root)");
     }
 }
