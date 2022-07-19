@@ -1,6 +1,5 @@
 use std::{collections::HashMap, fmt};
 
-use crate::code_gen::GenerationError;
 use crate::parser::{AbstractSyntaxTree, ASTNode, ASTNodeType, Annotation};
 use crate::lexer::Token;
 
