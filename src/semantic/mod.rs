@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt};
 
+use crate::code_gen::GenerationError;
 use crate::parser::{AbstractSyntaxTree, ASTNode, ASTNodeType, Annotation};
 use crate::lexer::Token;
 
@@ -232,7 +233,21 @@ fn validate_statement(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resul
 // name: 1000 + 200;
 fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool, allow_creation: bool) -> Result<(), SemanticError> {
     let set_type = is!(&node.node_type, "expected definition", ASTNodeType::Set(set_type))?;
-    validate_expression(data, &mut node.children[1], pull_through)?;
+    validate_expression(data, &mut node.children[1], pull_through)
+    .or_else(|_| validate_tuple(data, &mut node.children[1]))
+    .or_else(|_| {
+        match node.children[1].node_type {
+            ASTNodeType::Meta => {
+                validate_expression(data, &mut node.children[1].children[0], false)
+            }, 
+            ASTNodeType::Meta2D => {
+                validate_expression(data, &mut node.children[1].children[0], false)?;
+                validate_expression(data, &mut node.children[1].children[1], false)
+            },
+            _ => create_semantic_error!(node, "expected expression, tuple or meta"),
+        }
+    })?;
+
     let reference = is!(&node.children[0].node_type, "expected identifier in definition", ASTNodeType::Reference(reference))?;
     let ident = is!(reference, "expected identifier in definition", Token::Identifier(ident))?;
     let var_type = VariableType::node_to_type(data, &node.children[1])?;
@@ -469,30 +484,28 @@ fn validate_exec_tuple(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resu
 fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     let reference = is!(&node.children[0].node_type, "expected identifier", ASTNodeType::Reference(reference))?;
     let ident = is!(reference, "expected identifier", Token::Identifier(ident))?;
-    let variable = if let Some(variable) = data.globals.variables.get(ident) {
+    let var_type = if let Some(variable) = data.globals.variables.get(ident) {
         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
-        variable
+        variable.var_type
     } else if let Some(scope) = data.stack.last() {
         if let Some(variable) = scope.variables.get(ident) {
             node.children[0].annotations.push(Annotation::Id(variable.id));
-            variable
+            variable.var_type
         } else {
             create_semantic_error!(node, "identifier must be defined before it is used")?
         }
     } else {
         create_semantic_error!(node, "identifier must be defined before it is used")?
-    };
+    }.clone();
     match node.children[1].node_type {
         ASTNodeType::Meta => {
-            is!(variable.var_type, "variable must be a tuple", VariableType::Tuple)?
-            /*let variable_size = is!(variable.var_type, "variable must be a tuple", VariableType::Tuple)?;
-            is_true!(size, "index exceeds bounds of tuple", variable_size, <)?;*/
+            validate_expression(data, &mut node.children[1].children[0], false)?;
+            is!(var_type, "variable must be a tuple", VariableType::Tuple)?
         }, 
         ASTNodeType::Meta2D => {
-            is!(variable.var_type, "variable must be a matrix", VariableType::Matrix)?
-            /*let (variable_width, variable_height) = is!(variable.var_type, "variable must be a matrix", VariableType::Matrix)?;
-            is_true!(width, "x index exceeds bounds of matrix", variable_width, <)?;
-            is_true!(height, "y index exceeds bounds of matrix", variable_height, <)?;*/
+            validate_expression(data, &mut node.children[1].children[0], false)?;
+            validate_expression(data, &mut node.children[1].children[1], false)?;
+            is!(var_type, "variable must be a matrix", VariableType::Matrix)?
         },
         _ => (),
     }
@@ -574,11 +587,13 @@ mod tests {
     #[test]
     fn test_semantic() {
         let mut tree = AbstractSyntaxTree::new(&mut Tokenizer::new(r"
+            var0: (1; 0);
             var1: 10;
             var1;
             var2: 2*2;
             var2: 4;
             var3: (1; x:2; y:1) -> [(y) -> [1]];
+            var4: {1;2};
             2* 2 ? (2; 2);
         "));
 
