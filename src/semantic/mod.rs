@@ -110,11 +110,12 @@ impl fmt::Display for SemanticError {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
-enum VariableType {
+pub enum VariableType {
     Number,
     Executable,
-    Tuple(usize),
-    Matrix(usize, usize),
+    ExpressionList,
+    Tuple,
+    Matrix,
 }
 
 #[allow(dead_code)]
@@ -126,14 +127,14 @@ impl VariableType {
             ASTNodeType::Reduce => Ok(VariableType::Executable),
             ASTNodeType::ForEach => Ok(VariableType::Executable),
             ASTNodeType::Into => Ok(VariableType::Executable),
-            ASTNodeType::ExpressionList(_) => Ok(VariableType::Executable),
-            ASTNodeType::Tuple(size) => Ok(VariableType::Tuple(*size)),
+            ASTNodeType::ExpressionList(_) => Ok(VariableType::ExpressionList),
+            ASTNodeType::Tuple(_) => Ok(VariableType::Tuple),
             ASTNodeType::Indexed => Ok(VariableType::Number),
-            ASTNodeType::Meta2D(width, height) => Ok(VariableType::Matrix(*width, *height)),
-            ASTNodeType::Meta(size) => Ok(VariableType::Tuple(*size)),
+            ASTNodeType::Meta2D => Ok(VariableType::Matrix),
+            ASTNodeType::Meta => Ok(VariableType::Tuple),
             ASTNodeType::Reference(ref_type) => match ref_type {
                 Token::Identifier(ident) => {
-                    if let Some(variable) = data.globals.get(ident) {
+                    if let Some(variable) = data.globals.variables.get(ident) {
                         return Ok(variable.var_type)
                     } else if let Some(scope) = data.stack.last() {
                         if let  Some(variable) = scope.variables.get(ident) {
@@ -154,9 +155,9 @@ impl VariableType {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-struct Variable {
-    id: usize,
-    var_type: VariableType,
+pub struct Variable {
+    pub id: usize,
+    pub var_type: VariableType,
 }
 
 impl Variable {
@@ -168,7 +169,7 @@ impl Variable {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct Scope {
-    variables: HashMap<String, Variable>,
+    pub variables: HashMap<String, Variable>,
     id_front: usize,
 }
 
@@ -185,16 +186,16 @@ impl Scope {
 }
 
 #[allow(dead_code)]
-struct SemanticData{
+pub struct SemanticData{
     stack: Vec<Scope>,
-    globals: HashMap<String, Variable>,
+    globals: Scope,
     global_id_front: usize,
 }
 
 #[allow(dead_code)]
 impl SemanticData {
     pub fn new() -> SemanticData {
-        SemanticData { stack: vec![], globals: HashMap::<String, Variable>::new(), global_id_front: 0 }
+        SemanticData { stack: vec![], globals: Scope::new(), global_id_front: 0 }
     }
 
     pub fn new_global_id(&mut self) -> usize {
@@ -210,7 +211,7 @@ pub fn validate(ast: &mut AbstractSyntaxTree) -> Result<(), SemanticError> {
         for i in 0..ast.root.children.len() {
             validate_statement(&mut data, &mut ast.root.children[i])?;
         }
-        ast.root.annotations.push(Annotation::Scope(data.globals.len()));
+        ast.root.annotations.push(Annotation::Scope(data.globals.variables.len()));
         Ok(())
     } else {
         let root = &mut ast.root;
@@ -228,7 +229,7 @@ fn validate_statement(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resul
     }
     Ok(())
 }
-
+// name: 1000 + 200;
 fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<(), SemanticError> {
     let set_type = is!(&node.node_type, "expected definition", ASTNodeType::Set(set_type))?;
     validate_expression(data, &mut node.children[1], pull_through)?;
@@ -237,8 +238,13 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
     let var_type = VariableType::node_to_type(data, &node.children[1])?;
     
 
-    if let Some(variable) = data.globals.get(ident) {
+    if let Some(variable) = data.globals.variables.get(ident) {
         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
+        if matches!(variable.var_type, VariableType::Executable) {
+            node.children[0].annotations.push(Annotation::Executable);
+        } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+            node.children[0].annotations.push(Annotation::ExpressionList);
+        }
         match variable.var_type {
             VariableType::Number => return Ok(()),
             _ => return create_semantic_error!(node, "non number variables cannot be redefined or modified"),
@@ -248,6 +254,11 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
     if let Some(scope) = data.stack.last_mut() {
         if let Some(variable) = scope.variables.get(ident) {
             node.children[0].annotations.push(Annotation::Id(variable.id));
+            if matches!(variable.var_type, VariableType::Executable) {
+                node.children[0].annotations.push(Annotation::Executable);
+            } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+                node.children[0].annotations.push(Annotation::ExpressionList);
+            }
             match variable.var_type {
                 VariableType::Number => Ok(()),
                 _ => return create_semantic_error!(node, "non number variables cannot be redefined or modified"),
@@ -258,6 +269,9 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
                     let id = scope.new_id();
                     scope.variables.insert(ident.clone(), Variable::new(id, var_type));
                     node.children[0].annotations.push(Annotation::Id(id));
+                    if matches!(var_type, VariableType::Executable) {
+                        node.children[0].annotations.push(Annotation::Executable);
+                    }
                     Ok(())
                 },
                 _ => {
@@ -269,8 +283,11 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         match set_type {
             Token::Set => {
                 let id = data.new_global_id();
-                data.globals.insert(ident.clone(), Variable::new(id, var_type));
+                data.globals.variables.insert(ident.clone(), Variable::new(id, var_type));
                 node.children[0].annotations.push(Annotation::GlobalId(id));
+                if matches!(var_type, VariableType::Executable) {
+                    node.children[0].annotations.push(Annotation::Executable);
+                }
                 Ok(())
             },
             _ => {
@@ -305,7 +322,6 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::ForEach => validate_extended_exec(data, node),
         ASTNodeType::Into => validate_extended_exec(data, node),
         ASTNodeType::ExpressionList(_) => validate_expression_list(data, node),
-        ASTNodeType::Tuple(_) => validate_tuple(data, node),
         ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Reference(_) => validate_reference(data, node, pull_through),
         ASTNodeType::Number(_) => Ok(()),
@@ -327,13 +343,15 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
                     if let Some(variable) = scope.variables.get(ident) {
                         if matches!(variable.var_type, VariableType::Executable) {
                             node.children[0].annotations.push(Annotation::Id(variable.id));
+                            node.children[0].annotations.push(Annotation::Executable);
                             return Ok(())
                         }
                     }
                 }
-                if let Some(variable) = data.globals.get(ident) {
+                if let Some(variable) = data.globals.variables.get(ident) {
                     if matches!(variable.var_type, VariableType::Executable) {
                         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
+                        node.children[0].annotations.push(Annotation::Executable);
                         return Ok(())
                     }
                 }
@@ -353,20 +371,31 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
 fn validate_extended_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     validate_exec(data, &mut node.children[1])?;
     match &node.children[0].node_type {
-        ASTNodeType::Meta(_) => Ok(()),
+        ASTNodeType::Meta => Ok(()),
+        ASTNodeType::Meta2D => Ok(()),
         ASTNodeType::Tuple(_) => validate_tuple(data, node),
         ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Reference(Token::Identifier(ident)) => {
-            if let Some(variable) = data.globals.get(ident) {
+            if let Some(variable) = data.globals.variables.get(ident) {
                 node.children[0].annotations.push(Annotation::GlobalId(variable.id));
-                is!(variable.var_type, "variable must be defined before it is used", VariableType::Matrix(width, height)).map(|_|())
-                .or_else(|_| is!(variable.var_type, "variable must be defined before it is used", VariableType::Tuple(size)).map(|_|()))
+                if matches!(variable.var_type, VariableType::Executable) {
+                    node.children[0].annotations.push(Annotation::Executable);
+                } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+                    node.children[0].annotations.push(Annotation::ExpressionList);
+                }
+                is!(variable.var_type, "variable must be defined before it is used", VariableType::Matrix).map(|_|())
+                .or_else(|_| is!(variable.var_type, "variable must be defined before it is used", VariableType::Tuple).map(|_|()))
             } else {
                 let scope = is!(data.stack.last(), "variable must be defined before it is used", Some(scope))?;
                 let variable = is!(scope.variables.get(ident), "variable must be defined before it is used", Some(variable))?;
                 node.children[0].annotations.push(Annotation::Id(variable.id));
-                is!(variable.var_type, "variable must be defined before it is used", VariableType::Matrix(width, height)).map(|_|())
-                .or_else(|_| is!(variable.var_type, "variable must be defined before it is used", VariableType::Tuple(size)).map(|_|()) )           }
+                if matches!(variable.var_type, VariableType::Executable) {
+                    node.children[0].annotations.push(Annotation::Executable);
+                } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+                    node.children[0].annotations.push(Annotation::ExpressionList);
+                }
+                is!(variable.var_type, "variable must be defined before it is used", VariableType::Matrix).map(|_|())
+                .or_else(|_| is!(variable.var_type, "variable must be defined before it is used", VariableType::Tuple).map(|_|()) )           }
         },
         _ => create_semantic_error!(node, "invalid lhs of into")
     }
@@ -412,7 +441,7 @@ fn validate_exec_tuple(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resu
 fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     let reference = is!(&node.children[0].node_type, "expected identifier", ASTNodeType::Reference(reference))?;
     let ident = is!(reference, "expected identifier", Token::Identifier(ident))?;
-    let variable = if let Some(variable) = data.globals.get(ident) {
+    let variable = if let Some(variable) = data.globals.variables.get(ident) {
         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
         variable
     } else if let Some(scope) = data.stack.last() {
@@ -426,14 +455,16 @@ fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<
         create_semantic_error!(node, "identifier must be defined before it is used")?
     };
     match node.children[1].node_type {
-        ASTNodeType::Meta(size) => {
-            let variable_size = is!(variable.var_type, "variable must be a tuple", VariableType::Tuple(size))?;
-            is_true!(size, "index exceeds bounds of tuple", variable_size, <)?;
+        ASTNodeType::Meta => {
+            is!(variable.var_type, "variable must be a tuple", VariableType::Tuple)?
+            /*let variable_size = is!(variable.var_type, "variable must be a tuple", VariableType::Tuple)?;
+            is_true!(size, "index exceeds bounds of tuple", variable_size, <)?;*/
         }, 
-        ASTNodeType::Meta2D(width, height) => {
-            let (variable_width, variable_height) = is!(variable.var_type, "variable must be a matrix", VariableType::Matrix(width, height))?;
+        ASTNodeType::Meta2D => {
+            is!(variable.var_type, "variable must be a matrix", VariableType::Matrix)?
+            /*let (variable_width, variable_height) = is!(variable.var_type, "variable must be a matrix", VariableType::Matrix)?;
             is_true!(width, "x index exceeds bounds of matrix", variable_width, <)?;
-            is_true!(height, "y index exceeds bounds of matrix", variable_height, <)?;
+            is_true!(height, "y index exceeds bounds of matrix", variable_height, <)?;*/
         },
         _ => (),
     }
@@ -449,19 +480,34 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
     let ident = ident.unwrap();
 
     let mut pulled_through = false;
-    let var_type = if let Some(variable) = data.globals.get(ident) {
+    let var_type = if let Some(variable) = data.globals.variables.get(ident) {
         node.annotations.push(Annotation::GlobalId(variable.id));
+        if matches!(variable.var_type, VariableType::Executable) {
+            node.annotations.push(Annotation::Executable);
+        } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+            node.annotations.push(Annotation::ExpressionList);
+        }
         variable.var_type.clone()
     } else if let Some(scope) = data.stack.last() {
         if let Some(variable) = scope.variables.get(ident) {
             node.annotations.push(Annotation::Id(variable.id));
+            if matches!(variable.var_type, VariableType::Executable) {
+                node.annotations.push(Annotation::Executable);
+            } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+                node.annotations.push(Annotation::ExpressionList);
+            }
             variable.var_type.clone()
         } else {
             if pull_through {
                 let len = data.stack.len();
                 if let Some(prev_scope) = data.stack.get(len - 2) {
                     if let Some(variable) = prev_scope.variables.get(ident) {
-                        node.annotations.push(Annotation::PullThrough);
+                        node.annotations.push(Annotation::PullThrough(variable.id));
+                        if matches!(variable.var_type, VariableType::Executable) {
+                            node.annotations.push(Annotation::Executable);
+                        } else if matches!(variable.var_type, VariableType::ExpressionList)  {
+                            node.annotations.push(Annotation::ExpressionList);
+                        }
                         pulled_through = true;
                         variable.var_type.clone()
                     } else {
@@ -487,7 +533,7 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
     }
 
     is!(var_type, "", VariableType::Number)
-    .or_else(|_| is!(var_type, "value of a variable in a expression must be a number or tuple", VariableType::Tuple(size)).map(|_|()))
+    .or_else(|_| is!(var_type, "value of a variable in a expression must be a number or tuple", VariableType::Tuple).map(|_|()))
 
 }
 
