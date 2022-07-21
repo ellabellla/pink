@@ -339,7 +339,10 @@ fn generate_function(is_eval: bool, func: &mut Function, naming: &mut Naming, no
 }
 
 fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
-    let func_tuple_ret = generate_func_tuple(is_eval, func, naming, &node.children[0])?;
+    let is_ref = get_annotation!(node.children[1], "", Annotation::GlobalId(_id))
+        .or_else(|_| get_annotation!(node.children[1], "", Annotation::Id(_id))).is_ok();
+
+    let func_tuple_ret = generate_func_tuple(is_eval, is_ref, func, naming, &node.children[0])?;
     if !is_eval {
         let func_id = func_tuple_ret;
         let mut inner_func = func.funcs.get_mut(&func_id).expect("function");
@@ -662,7 +665,7 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
     Ok(id)
 }
 
-fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
+fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
     let mut arg_index = 0;
     if is_eval {
         for i in 0..node.children.len() {
@@ -670,12 +673,17 @@ fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, 
                 continue;
             }
             if generate_func_definition(arg_index, is_eval, func, naming, &node.children[i]).is_ok() {
-                arg_index += 1;
+                if !is_ref {
+                    arg_index += 1;
+                }
             } else {
                 let reference = generate_expression(func, naming, &node.children[i])?;
                 
                 if !matches!(reference, Reference::None) && !matches!(reference, Reference::Stack) {
                     func.code.push(Line::Instr(Instr::Push(reference)));
+                }
+                if is_ref {
+                    arg_index += 1;
                 }
             } 
         }
@@ -687,12 +695,17 @@ fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, 
                 continue;
             }
             if generate_func_definition(arg_index, is_eval, &mut inner_func, naming, &node.children[i]).is_ok() {
-                arg_index += 1;
+                if !is_ref {
+                    arg_index += 1;
+                }
             } else {
                 let reference = generate_expression(&mut inner_func, naming, &node.children[i])?;
     
                 if !matches!(reference, Reference::None) && !matches!(reference, Reference::Stack) {
                     inner_func.code.push(Line::Instr(Instr::Push(reference)));
+                }
+                if is_ref {
+                    arg_index += 1;
                 }
             } 
         }
@@ -910,7 +923,7 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
     } else if is_expression_list {
         let mut inner_func = Function::new(0, naming.new_func_id());
         let func_id = inner_func.id;
-        let expression_list = generate_expression_list(&mut inner_func, naming, node)?;
+        let expression_list = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
         inner_func.ret = expression_list;
         func.funcs.insert(inner_func.id, inner_func);
         if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
@@ -1077,8 +1090,8 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            func1: (x:2) -> [],
-            () -> func1,
+            func1: (2; x:1) -> [10],
+            (1) -> func1;
         "));
 
 
