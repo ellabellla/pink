@@ -29,6 +29,8 @@ pub enum Reference {
     Stack,
     Literal(f64),
     Global(usize),
+    Argument(usize),
+    Heap(usize),
     Matrix(usize),
     Tuple(usize),
     None,
@@ -41,6 +43,14 @@ impl Reference {
             Reference::Stack => vm.stack.pop().and_then(|data| data.to_number(vm)),
             Reference::Global(index) => {
                 let reference = vm.globals.get(*index)?.clone();
+                reference.to_number(x, y, vm)
+            },
+            Reference::Argument(index) => {
+                let reference = vm.stack.get_arg(*index)?.clone();
+                reference.to_number(x, y, vm)
+            },
+            Reference::Heap(index) => {
+                let reference = vm.heap.get(index)?.clone();
                 reference.to_number(x, y, vm)
             },
             Reference::Matrix(index) => vm.matrices.get(index).and_then(|matrix| matrix.get(x, y)),
@@ -69,11 +79,20 @@ impl Reference {
         if let Some(header) = chars.peek() {
             let mut ref_type = Reference::None;
             match header {
+                '_' => {
+                    return Ok(Reference::None)
+                },
                 '@' => {
                     return Ok(Reference::Stack)
                 },
                 'G' => {
                     ref_type = Reference::Global(0);
+                },
+                'A' => {
+                    ref_type = Reference::Argument(0);
+                },
+                'H' => {
+                    ref_type = Reference::Heap(0);
                 },
                 'M' => {
                     ref_type = Reference::Matrix(0);
@@ -119,17 +138,20 @@ impl Reference {
 impl ToString for Reference {
     fn to_string(&self) -> String {
         match self {
+            Reference::None => String::from("_"),
             Reference::Stack => String::from("@"),
             Reference::Global(index) => String::from(format!("G{}", index)),
+            Reference::Argument(index) => String::from(format!("A{}", index)),
+            Reference::Heap(index) => String::from(format!("H{}", index)),
             Reference::Matrix(index) => String::from(format!("M{}", index)),
             Reference::Literal(number) => String::from(format!("{}", number)),
             Reference::Tuple(index) => String::from(format!("T{}", index)),
-            Reference::None => String::from(""),
             Reference::Executable(argc, instr_pointer) => String::from(format!("F{},{}", argc, instr_pointer)),
         }
     }
 }
 
+#[derive(Clone)]
 #[allow(dead_code)]
 pub enum Instr {
     Add(Reference, Reference),
@@ -164,7 +186,8 @@ pub enum Instr {
     WidthMatrix(usize),
     HeightMatrix(usize),
 
-    PushFrame(usize),
+    PushFrame(usize, usize),
+    PushInlineFrame(usize, usize),
     PopFrame(Reference),
     GetArg(usize),
     SetArg(usize, Reference),
@@ -180,10 +203,18 @@ pub enum Instr {
 
     Jump(usize),
     JumpEqual(usize, Reference, Reference),
+    JumpNotEqual(usize, Reference, Reference),
     JumpLesser(usize, Reference, Reference),
     JumpGreater(usize, Reference, Reference),
     JumpLesserOrEqual(usize, Reference, Reference),
     JumpGreaterOrEqual(usize, Reference, Reference),
+
+    ExecRef(Reference),
+
+    Alloc(usize, Reference),
+    Free(usize),
+    Point(usize),
+    SetPoint(usize, Reference),
 }
 
 
@@ -230,7 +261,8 @@ impl Instr {
             "LNMT" => Ok(Instr::LenMatrix(parse_usize(chars)?)),
             "WDMT" => Ok(Instr::WidthMatrix(parse_usize(chars)?)),
             "HTMT" => Ok(Instr::HeightMatrix(parse_usize(chars)?)),
-            "PSHF" => Ok(Instr::PushFrame(parse_usize(chars)?)),
+            "PSHF" => Ok(Instr::PushFrame(parse_usize(chars)?, parse_usize(chars)?)),
+            "PHIF" => Ok(Instr::PushInlineFrame(parse_usize(chars)?, parse_usize(chars)?)),
             "POPF" => Ok(Instr::PopFrame(Reference::from_str(chars)?)),
             "GETA" => Ok(Instr::GetArg(parse_usize(chars)?)),
             "SETA" => Ok(Instr::SetArg(parse_usize(chars)?, Reference::from_str(chars)?)),
@@ -243,10 +275,16 @@ impl Instr {
             "LNUP" => Ok(Instr::LenTuple(parse_usize(chars)?)),
             "JMPX" => Ok(Instr::Jump(parse_number(chars)?.floor() as usize)),
             "JPEQ" => Ok(Instr::JumpEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "JPNQ" => Ok(Instr::JumpNotEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPLS" => Ok(Instr::JumpLesser(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPGR" => Ok(Instr::JumpGreater(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPLE" => Ok(Instr::JumpLesserOrEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPGE" => Ok(Instr::JumpGreaterOrEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "EXEC" => Ok(Instr::ExecRef(Reference::from_str(chars)?)),
+            "ALOC" => Ok(Instr::Alloc(parse_usize(chars)?, Reference::from_str(chars)?)),
+            "FREE" => Ok(Instr::Free(parse_usize(chars)?)),
+            "PONT" => Ok(Instr::Point(parse_usize(chars)?)),
+            "STPT" => Ok(Instr::SetPoint(parse_usize(chars)?, Reference::from_str(chars)?)),
             _ => Err(InstrError::new("couldn't parse instr"))
         }
 
@@ -282,7 +320,8 @@ impl ToString for Instr {
             Instr::LenMatrix(a) => format!("LNMT {}", a.to_string()),
             Instr::WidthMatrix(a) => format!("WDMT {}", a.to_string()),
             Instr::HeightMatrix(a) => format!("HTMT {}", a.to_string()),
-            Instr::PushFrame(a) => format!("PSHF {}", a.to_string()),
+            Instr::PushFrame(a, b) => format!("PSHF {} {}", a.to_string(), b.to_string()),
+            Instr::PushInlineFrame(a, b) => format!("PHIF {} {}", a.to_string(), b.to_string()),
             Instr::PopFrame(a) => format!("POPF {}", a.to_string()),
             Instr::GetArg(a) => format!("GETA {}", a.to_string()),
             Instr::SetArg(a,  b) => format!("SETA {} {}", a.to_string(), b.to_string()),
@@ -295,10 +334,16 @@ impl ToString for Instr {
             Instr::LenTuple(a) => format!("LNUP {}", a.to_string()),
             Instr::Jump(a) => format!("JMPX {}", a.to_string()),
             Instr::JumpEqual(a,  b, c) => format!("JPEQ {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::JumpNotEqual(a,  b, c) => format!("JPNQ {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpLesser(a,  b, c) => format!("JPLS {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpGreater(a,  b, c) => format!("JPGR {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpLesserOrEqual(a,  b, c) => format!("JPLE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpGreaterOrEqual(a,  b, c) => format!("JPGE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::ExecRef(a) => format!("EXEC {}", a.to_string()),
+            Instr::Alloc(a,  b) => format!("ALOC {} {}", a.to_string(), b.to_string()),
+            Instr::Free(a) => format!("FREE {}", a.to_string()),
+            Instr::Point(a) => format!("PONT {}", a.to_string()),
+            Instr::SetPoint(a,  b) => format!("STPT {} {}", a.to_string(), b.to_string()),
         }
     }
 }
@@ -539,8 +584,13 @@ mod instr_ops {
             Err(InstrError::new("could not get matrix"))
         }
     }
-    pub fn push_frame(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+    pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         vm.stack.push(Data::Frame(a, 0, vm.instr_pointer));
+        vm.instr_pointer = b;
+        Ok(None)
+    }
+    pub fn push_inline_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        vm.stack.push(Data::Frame(a, 0, b));
         Ok(None)
     }
 
@@ -572,6 +622,15 @@ mod instr_ops {
     pub fn jump_equal(a: usize, b:  f64, c:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Ok(Some(res)) = equal(b, c, vm) {
             if res != 0.0 {
+                vm.instr_pointer = a;
+            }
+        }
+
+        Ok(None)
+    }
+    pub fn jump_not_equal(a: usize, b:  f64, c:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Ok(Some(res)) = equal(b, c, vm) {
+            if res == 0.0 {
                 vm.instr_pointer = a;
             }
         }
@@ -615,6 +674,14 @@ mod instr_ops {
 
         Ok(None)
     }
+    pub fn free(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(_) = vm.heap.remove(&a) {
+            Ok(None)
+        } else {
+            Err(InstrError::new("couldn't remove from heap"))
+        }
+
+    }
 }
 pub struct VM {
     globals: Vec<Reference>,
@@ -623,6 +690,7 @@ pub struct VM {
     stack: Stack,
     instrs: Vec<Instr>,
     instr_pointer: usize,
+    heap: HashMap<usize, Reference>,
 }
 
 impl VM {
@@ -635,6 +703,7 @@ impl VM {
             stack: Stack::new(stack_capacity), 
             instrs: instrs, 
             instr_pointer,
+            heap: HashMap::new(),
         }
     }
 
@@ -650,7 +719,7 @@ impl VM {
     pub fn eval_instr(&mut self) -> Result<(), InstrError> {
         if let Some(instr) = self.instrs.get(self.instr_pointer) {
             self.instr_pointer+=1;
-            let res = match *instr.clone() {
+            let res = match instr.clone() {
                 Instr::Add(a, b) => self.eval_binary_op(a, b, &instr_ops::add),
                 Instr::Subtract (a,b) => self.eval_binary_op(a, b, &instr_ops::sub),
                 Instr::Multiply (a,b) => self.eval_binary_op(a, b, &instr_ops::multiply),
@@ -694,7 +763,8 @@ impl VM {
                 Instr::LenMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::len_matrix),
                 Instr::WidthMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::width_matrix),
                 Instr::HeightMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::height_matrix),
-                Instr::PushFrame(a) => self.eval_unary_op_fixed(a, &instr_ops::push_frame),
+                Instr::PushFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_frame),
+                Instr::PushInlineFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_inline_frame),
                 Instr::PopFrame(a) => {
                     if let Some(instr_pointer) = self.stack.pop_frame() {
                         self.instr_pointer = instr_pointer;
@@ -772,10 +842,44 @@ impl VM {
                 Instr::LenTuple(a) => self.eval_unary_op_fixed(a, &instr_ops::len_tuple),
                 Instr::Jump(a) => self.eval_unary_op_fixed(a, &instr_ops::jump),
                 Instr::JumpEqual(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_equal),
+                Instr::JumpNotEqual(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_not_equal),
                 Instr::JumpLesser(a, b, c) => self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_lesser),
                 Instr::JumpGreater(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater),
                 Instr::JumpLesserOrEqual(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_lesser_equal),
                 Instr::JumpGreaterOrEqual(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater_equal),
+                Instr::ExecRef(a) => {
+                    if let Reference::Executable(argc, instr_pointer) = a{
+                        let reference = self.execute(argc, instr_pointer);
+                        self.stack.push(Data::Reference(reference));
+                        Ok(None)
+                    } else {
+                        Err(InstrError::new("reference mut be executable"))
+                    }
+                },
+                Instr::Alloc(a, b) => {
+                    if let Some(_) = self.heap.insert(a, b) {
+                        Ok(None)
+                    } else {
+                        Err(InstrError::new("couldn't add to heap"))
+                    }
+                },
+                Instr::Free(a) => self.eval_unary_op_fixed(a, &instr_ops::free),
+                Instr::Point(a) => {
+                    if let Some(reference) = self.heap.get(&a) {
+                        self.stack.push(Data::Reference(*reference));
+                        Ok(None)
+                    } else {
+                        Err(InstrError::new("couldn't point to heap"))
+                    }
+                },
+                Instr::SetPoint(a, b) => {
+                    if let Some(reference) = self.heap.get_mut(&a) {
+                        *reference = b;
+                        Ok(None)
+                    } else {
+                        Err(InstrError::new("couldn't set data on heap"))
+                    }
+                }
             };
 
             if let Ok(value) = res {
