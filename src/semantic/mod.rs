@@ -408,8 +408,8 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
 fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     data.stack.push(Scope::new());
     let res = {
-        let is_eval = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference)).is_ok();
-        validate_exec_tuple(is_eval, data, &mut node.children[0])
+        let is_ref = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference)).is_ok();
+        validate_exec_tuple(is_ref, data, &mut node.children[0])
         .and_then(|argc| {
             node.annotations.push(Annotation::Argc(argc));
             let ident = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference))
@@ -534,19 +534,19 @@ fn validate_tuple(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<()
     Ok(())
 }
 
-fn validate_exec_tuple(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<usize, SemanticError> {  
+fn validate_exec_tuple(is_ref: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<usize, SemanticError> {  
     let mut argc = 0;  
     for i in 0..node.children.len() {
         if matches!(node.children[i].node_type, ASTNodeType::Throw) || matches!(node.children[i].node_type, ASTNodeType::Push) {
             continue;
         } else {
             if validate_definition(data, &mut node.children[i], true, true).is_ok() {
-                if !is_eval {
+                if !is_ref {
                     argc += 1;
                 }
             } else {
                 validate_expression(data, &mut node.children[i], true)?;
-                if is_eval {
+                if is_ref {
                     argc += 1;
                 }
             }
