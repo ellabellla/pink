@@ -510,17 +510,23 @@ fn parse_expression_list(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError
 fn parse_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
     let mut res = create_parse_error!(parser.tokenizer, "expected expression list or tuple") ;
-    if let Ok(tuple) = parse_tuple(parser) {
+    if let Ok(tuple) =  get_or_fallback!(parser.tokenizer, fallback, parse_tuple) {
         if is_next_continue!(parser.tokenizer, Token::Exec).is_ok() {
-            if let Ok(expression_list) = parse_expression_list(parser) {
+            if let Ok(expression_list) = get_or_fallback!(parser.tokenizer, fallback, parse_expression_list) {
                 res = Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![tuple, expression_list], Annotation::pos_to_debug(parser.tokenizer.pos()))))
-            } else {
-                let ident = get_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
-                res = Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![
-                    tuple,
-                    Box::new(ASTNode::new(ASTNodeType::Reference(Token::Identifier(ident)), vec![], Annotation::pos_to_debug(parser.tokenizer.pos())))    
-                ], Annotation::pos_to_debug(parser.tokenizer.pos()))))
             }
+        }
+    }
+    if res.is_ok() {
+        return res
+    }
+    if let Ok(tuple) = get_or_fallback!(parser.tokenizer, fallback, parse_tuple) {
+        if is_next_continue!(parser.tokenizer, Token::Exec).is_ok() {
+            let ident = get_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
+            res = Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![
+                tuple,
+                Box::new(ASTNode::new(ASTNodeType::Reference(Token::Identifier(ident)), vec![], Annotation::pos_to_debug(parser.tokenizer.pos())))    
+            ], Annotation::pos_to_debug(parser.tokenizer.pos()))))
         }
     }
     if res.is_ok() {
