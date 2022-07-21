@@ -260,7 +260,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
         if matches!(variable.var_type, VariableType::Executable) {
             if let Some(argc) = variable.argc {
-                node.children[0].annotations.push(Annotation::Args(argc));
+                node.children[0].annotations.push(Annotation::Argc(argc));
             }
             node.children[0].annotations.push(Annotation::Executable);
         } else if matches!(variable.var_type, VariableType::ExpressionList)  {
@@ -277,7 +277,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             node.children[0].annotations.push(Annotation::Id(variable.id));
             if matches!(variable.var_type, VariableType::Executable) {
                 if let Some(argc) = variable.argc {
-                    node.children[0].annotations.push(Annotation::Args(argc));
+                    node.children[0].annotations.push(Annotation::Argc(argc));
                 }
                 node.children[0].annotations.push(Annotation::Executable);
             } else if matches!(variable.var_type, VariableType::ExpressionList)  {
@@ -292,8 +292,8 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
                 Token::Set => {
                     if allow_creation {
                         let id = scope.new_id();
-                        let argc = if let Some(Annotation::Args(argc)) = node.children[1].annotations
-                            .iter().filter(|ele| matches!(ele, Annotation::Args(_))).next() {
+                        let argc = if let Some(Annotation::Argc(argc)) = node.children[1].annotations
+                            .iter().filter(|ele| matches!(ele, Annotation::Argc(_))).next() {
                                 Some(*argc)
                         } else {
                             None
@@ -303,7 +303,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
                         node.children[0].annotations.push(Annotation::Init);
                         if matches!(var_type, VariableType::Executable) {
                             if let Some(argc) = argc {
-                                node.children[0].annotations.push(Annotation::Args(argc));
+                                node.children[0].annotations.push(Annotation::Argc(argc));
                             }
                             node.children[0].annotations.push(Annotation::Executable);
                         }
@@ -322,8 +322,8 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             Token::Set => {
                 if allow_creation {
                     let id = data.new_global_id();
-                    let argc = if let Some(Annotation::Args(argc)) = node.children[1].annotations
-                        .iter().filter(|ele| matches!(ele, Annotation::Args(_))).next() {
+                    let argc = if let Some(Annotation::Argc(argc)) = node.children[1].annotations
+                        .iter().filter(|ele| matches!(ele, Annotation::Argc(_))).next() {
                             Some(*argc)
                     } else {
                         None
@@ -333,7 +333,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
                     node.children[0].annotations.push(Annotation::Init);
                     if matches!(var_type, VariableType::Executable) {
                         if let Some(argc) = argc {
-                            node.children[0].annotations.push(Annotation::Args(argc));
+                            node.children[0].annotations.push(Annotation::Argc(argc));
                         }
                         node.children[0].annotations.push(Annotation::Executable);
                     }
@@ -398,14 +398,14 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
     let res = {
         validate_exec_tuple(data, &mut node.children[0])
         .and_then(|argc| {
-            node.annotations.push(Annotation::Args(argc));
+            node.annotations.push(Annotation::Argc(argc));
             let ident = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference))
             .and_then(|reference| is!(reference, "expected identifier", Token::Identifier(ident)));
 
             if let Ok(ident) = ident {
                 if let Some(variable) = data.globals.variables.get(ident) {
                     if let Some(argc) = variable.argc {
-                        node.children[1].annotations.push(Annotation::Args(argc));
+                        node.children[1].annotations.push(Annotation::Argc(argc));
                     }
                     if matches!(variable.var_type, VariableType::ExpressionList) {
                         node.children[1].annotations.push(Annotation::GlobalId(variable.id));
@@ -422,7 +422,7 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
                 if let Some(scope) = data.stack.last() {
                     if let Some(variable) = scope.variables.get(ident) {
                         if let Some(argc) = variable.argc {
-                            node.children[1].annotations.push(Annotation::Args(argc));
+                            node.children[1].annotations.push(Annotation::Argc(argc));
                         }
                         if matches!(variable.var_type, VariableType::ExpressionList) {
                             node.children[1].annotations.push(Annotation::Id(variable.id));
@@ -574,7 +574,7 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
     let var_type = if let Some(variable) = data.globals.variables.get(ident) {
         node.annotations.push(Annotation::GlobalId(variable.id));
         if let Some(argc) = variable.argc {
-            node.annotations.push(Annotation::Args(argc));
+            node.annotations.push(Annotation::Argc(argc));
         }
         if matches!(variable.var_type, VariableType::Executable) {
             node.annotations.push(Annotation::Executable);
@@ -586,7 +586,7 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
         if let Some(variable) = scope.variables.get(ident) {
             node.annotations.push(Annotation::Id(variable.id));
             if let Some(argc) = variable.argc {
-                node.annotations.push(Annotation::Args(argc));
+                node.annotations.push(Annotation::Argc(argc));
             }
             if matches!(variable.var_type, VariableType::Executable) {
                 node.annotations.push(Annotation::Executable);
@@ -601,7 +601,7 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
                     if let Some(variable) = prev_scope.variables.get(ident) {
                         node.annotations.push(Annotation::PullThrough(variable.id));
                         if let Some(argc) = variable.argc {
-                            node.annotations.push(Annotation::Args(argc));
+                            node.annotations.push(Annotation::Argc(argc));
                         }
                         if matches!(variable.var_type, VariableType::Executable) {
                             node.annotations.push(Annotation::Executable);

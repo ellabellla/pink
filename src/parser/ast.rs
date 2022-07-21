@@ -48,6 +48,7 @@ pub enum Annotation {
     Id(usize),
     GlobalId(usize),
     Init,
+    Argc(usize),
     Executable,
     ExpressionList,
     PullThrough(usize),
