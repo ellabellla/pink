@@ -520,7 +520,7 @@ fn parse_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     if res.is_ok() {
         return res
     }
-    if let Ok(tuple) = get_or_fallback!(parser.tokenizer, fallback, parse_tuple) {
+    if let Ok(tuple) = get_or_fallback!(parser.tokenizer, fallback, parse_value_tuple) {
         if is_next_continue!(parser.tokenizer, Token::Exec).is_ok() {
             let ident = get_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
             res = Ok(Box::new(ASTNode::new(ASTNodeType::Exec, vec![
