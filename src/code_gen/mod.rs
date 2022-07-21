@@ -184,10 +184,6 @@ impl Code {
                 Line::Label(label_id) => {
                     label_indices.insert(*label_id, index);
                 },
-                Line::Call(func_id) => {
-                    let (argc, _) = func_indices.get(func_id).expect("should already be defined");
-                    index += argc + 1;
-                }
                 _ => index += 1,
             }
         }
@@ -200,9 +196,6 @@ impl Code {
                 Line::Instr(instr) => out.push(instr.clone()),
                 Line::Call(func_id) => {
                     let (argc, index) = func_indices.get(func_id).expect("should already be defined");
-                    for _ in 0..*argc {
-                        out.push(Instr::Push(Reference::None));
-                    }
                     out.push(Instr::PushFrame(*argc, *index));
                 },
                 Line::CallInline(argc, label_id) => {
@@ -346,13 +339,26 @@ fn generate_function(is_eval: bool, func: &mut Function, naming: &mut Naming, no
 }
 
 fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
-    let func_id = generate_func_tuple(is_eval, func, naming, &node.children[0])?;
-    if let Some(func_id) = func_id {
+    let func_tuple_ret = generate_func_tuple(is_eval, func, naming, &node.children[0])?;
+    if !is_eval {
+        let func_id = func_tuple_ret;
         let mut inner_func = func.funcs.get_mut(&func_id).expect("function");
         if let Ok(id) = get_annotation!(node.children[1], "", Annotation::GlobalId(_id)) {
+            let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
+            if inner_func.args < argc {
+                for _ in 0..argc-inner_func.args {
+                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
+                }
+            }
             inner_func.code.push(Line::Instr(Instr::ExecRef(Reference::Global(*id))));
             inner_func.ret = Reference::Stack;
         } else if let Ok(id) = get_annotation!(node.children[1], "", Annotation::Id(_id)) {
+            let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
+            if inner_func.args < argc {
+                for _ in 0..argc-inner_func.args {
+                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
+                }
+            }
             inner_func.code.push(Line::Instr(Instr::ExecRef(Reference::Argument(*id))));
             inner_func.ret = Reference::Stack;
         } else if matches!(node.children[1].node_type, ASTNodeType::ExpressionList(_)){
@@ -361,15 +367,29 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
         }
         Ok(inner_func.id)
     } else {
+        let outer_argc = func_tuple_ret;
         if let Ok(id) = get_annotation!(node.children[1], "", Annotation::GlobalId(_id)) {
+            let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
+            if outer_argc < argc {
+                for _ in 0..argc-outer_argc {
+                    func.code.push(Line::Instr(Instr::Push(Reference::None)));
+                }
+            }
             func.code.push(Line::Instr(Instr::ExecRef(Reference::Global(*id))));
         } else if let Ok(id) = get_annotation!(node.children[1], "", Annotation::Id(_id)) {
+            let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
+            if outer_argc < argc {
+                for _ in 0..argc-outer_argc {
+                    func.code.push(Line::Instr(Instr::Push(Reference::None)));
+                }
+            }
             func.code.push(Line::Instr(Instr::ExecRef(Reference::Argument(*id))));
         } else if matches!(node.children[1].node_type, ASTNodeType::ExpressionList(_)){
-            let reference = generate_expression_list(func, naming, &node.children[1])?;
-            if !matches!(reference, Reference::Stack) {
-                func.code.push(Line::Instr(Instr::Push(reference)));
-            }
+            let mut inner_func = Function::new(outer_argc, naming.new_func_id());
+            let reference = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
+            inner_func.ret = reference;
+            func.code.push(Line::Call(inner_func.id));
+            func.funcs.insert(inner_func.id, inner_func);
         }
         Ok(func.id)
     }
@@ -642,7 +662,7 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
     Ok(id)
 }
 
-fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Option<usize>, GenerationError> {
+fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
     let mut arg_index = 0;
     if is_eval {
         for i in 0..node.children.len() {
@@ -659,9 +679,7 @@ fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, 
                 }
             } 
         }
-
-        func.args = arg_index;
-        Ok(None)
+        Ok(arg_index)
     } else {
         let mut inner_func = Function::new(0, naming.new_func_id());
         for i in 0..node.children.len() {
@@ -687,7 +705,7 @@ fn generate_func_tuple(is_eval: bool, func: &mut Function, naming: &mut Naming, 
     
         let id = inner_func.id;
         func.funcs.insert(inner_func.id, inner_func);
-        Ok(Some(id))
+        Ok(id)
     }
 }
 
@@ -1059,15 +1077,16 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            add10: (x: 10; 10) -> [
-                @ + x
-            ];
-            (x: 5) -> add10;
+            func1: (x:2) -> [],
+            () -> func1,
         "));
+
 
         if let Err(err) = validate(&mut tree) {
             panic!("{}", err.to_string());
         }
+        println!("{}", tree.to_pretty_string(true));
+
 
         let code = Code::new(&mut tree);
 
