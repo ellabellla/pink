@@ -280,13 +280,18 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         } else {
             match set_type {
                 Token::Set => {
-                    let id = scope.new_id();
-                    scope.variables.insert(ident.clone(), Variable::new(id, var_type));
-                    node.children[0].annotations.push(Annotation::Id(id));
-                    if matches!(var_type, VariableType::Executable) {
-                        node.children[0].annotations.push(Annotation::Executable);
+                    if allow_creation {
+                        let id = scope.new_id();
+                        scope.variables.insert(ident.clone(), Variable::new(id, var_type));
+                        node.children[0].annotations.push(Annotation::Id(id));
+                        node.children[0].annotations.push(Annotation::Init);
+                        if matches!(var_type, VariableType::Executable) {
+                            node.children[0].annotations.push(Annotation::Executable);
+                        }
+                        Ok(())
+                    } else {
+                        create_semantic_error!(node, "variable creation is not allowed in this scope")
                     }
-                    Ok(())
                 },
                 _ => {
                     create_semantic_error!(node, "a variable must first be defined before it is modified")
@@ -300,6 +305,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
                     let id = data.new_global_id();
                     data.globals.variables.insert(ident.clone(), Variable::new(id, var_type));
                     node.children[0].annotations.push(Annotation::GlobalId(id));
+                    node.children[0].annotations.push(Annotation::Init);
                     if matches!(var_type, VariableType::Executable) {
                         node.children[0].annotations.push(Annotation::Executable);
                     }
@@ -373,6 +379,9 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
                         node.children[1].annotations.push(Annotation::GlobalId(variable.id));
                         node.children[1].annotations.push(Annotation::Executable);
                         return Ok(())
+                    } else if matches!(variable.var_type, VariableType::Executable) {
+                        node.children[1].annotations.push(Annotation::GlobalId(variable.id));
+                        return Ok(())
                     } else {
                         return create_semantic_error!(node, "identifier must be an expression list");
                     }
@@ -384,7 +393,10 @@ fn validate_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
                             node.children[1].annotations.push(Annotation::Id(variable.id));
                             node.children[1].annotations.push(Annotation::ExpressionList);
                             return Ok(())
-                        }
+                        } else if matches!(variable.var_type, VariableType::Executable) {
+                            node.children[1].annotations.push(Annotation::Id(variable.id));
+                            return Ok(())
+                        } 
                     } else {
                         return create_semantic_error!(node, "identifier must be an expression list");
                     }
