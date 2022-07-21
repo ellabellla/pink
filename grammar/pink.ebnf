@@ -60,7 +60,7 @@ strict_definition = identifier set (expression | meta | tuple);
 
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
-exec = expression_list | ((tuple exec expression_list) | (value_tuple exec identifier)));
+exec = expression_list | (tuple exec (expression_list | identifier));
 into = (meta | value_tuple | reference) into exec;
 for_each = (meta | value_tuple | reference) into_exec exec;
 reduce = (meta | value_tuple | reference) reduce_exec exec;
