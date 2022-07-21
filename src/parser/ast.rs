@@ -47,6 +47,7 @@ pub enum ASTNodeType {
 pub enum Annotation {
     Id(usize),
     GlobalId(usize),
+    Init,
     Executable,
     ExpressionList,
     PullThrough(usize),
