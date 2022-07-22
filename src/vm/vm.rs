@@ -208,6 +208,7 @@ pub enum Instr {
     JumpGreater(usize, Reference, Reference),
     JumpLesserOrEqual(usize, Reference, Reference),
     JumpGreaterOrEqual(usize, Reference, Reference),
+    JumpNotNone(usize, Reference),
 
     ExecRef(Reference),
 
@@ -280,6 +281,7 @@ impl Instr {
             "JPGR" => Ok(Instr::JumpGreater(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPLE" => Ok(Instr::JumpLesserOrEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "JPGE" => Ok(Instr::JumpGreaterOrEqual(parse_number(chars)?.floor() as usize, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "JPNO" => Ok(Instr::JumpNotNone(parse_usize(chars)?, Reference::from_str(chars)?)),
             "EXEC" => Ok(Instr::ExecRef(Reference::from_str(chars)?)),
             "ALOC" => Ok(Instr::Alloc(parse_usize(chars)?, Reference::from_str(chars)?)),
             "FREE" => Ok(Instr::Free(parse_usize(chars)?)),
@@ -339,6 +341,7 @@ impl ToString for Instr {
             Instr::JumpGreater(a,  b, c) => format!("JPGR {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpLesserOrEqual(a,  b, c) => format!("JPLE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::JumpGreaterOrEqual(a,  b, c) => format!("JPGE {} {} {}", a.to_string(), b.to_string(), c.to_string()),
+            Instr::JumpNotNone(a, b) => format!("JPNN {} {}", a.to_string(), b.to_string()),
             Instr::ExecRef(a) => format!("EXEC {}", a.to_string()),
             Instr::Alloc(a,  b) => format!("ALOC {} {}", a.to_string(), b.to_string()),
             Instr::Free(a) => format!("FREE {}", a.to_string()),
@@ -847,6 +850,48 @@ impl VM {
                 Instr::JumpGreater(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater),
                 Instr::JumpLesserOrEqual(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_lesser_equal),
                 Instr::JumpGreaterOrEqual(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater_equal),
+                Instr::JumpNotNone(a, b) => {
+                    let reference = match b {
+                        Reference::Executable(argc, instr_pointer) => self.execute(argc, instr_pointer),
+                        Reference::Stack => {
+                            if let Some(Data::Reference(reference)) = self.stack.peek() {
+                               reference
+                            } else {
+                                Reference::None
+                            }
+                        },
+                        Reference::Literal(_) => b,
+                        Reference::Global(id) => {
+                            if let Some(reference) = self.globals.get(id) {
+                                *reference
+                            } else {
+                                Reference::None
+                            }
+                        },
+                        Reference::Argument(id) => {
+                            if let Some(reference) = self.stack.get_arg(id) {
+                                reference
+                            } else {
+                                Reference::None
+                            }
+                        },
+                        Reference::Heap(id) => {
+                            if let Some(reference) = self.heap.get(&id) {
+                                *reference
+                            } else {
+                                Reference::None
+                            }
+                        },
+                        Reference::Matrix(_) => b,
+                        Reference::Tuple(_) => b,
+                        Reference::None => b,
+                    };
+
+                    if !matches!(reference, Reference::None) {
+                        self.instr_pointer = a;
+                    } 
+                    Ok(None)
+                }
                 Instr::ExecRef(a) => {
                     if let Reference::Executable(argc, instr_pointer) = a{
                         let reference = self.execute(argc, instr_pointer);
@@ -879,7 +924,7 @@ impl VM {
                     } else {
                         Err(InstrError::new("couldn't set data on heap"))
                     }
-                }
+                },
             };
 
             if let Ok(value) = res {
