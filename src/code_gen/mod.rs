@@ -135,7 +135,6 @@ struct Function {
     args: usize,
     code: Vec<Line>,
     funcs: HashMap<usize, Function>,
-    pull_through: HashMap<usize, (usize, usize)>,
     tuples: Vec<usize>,
     matrices: Vec<usize>,
     ret: Reference,
@@ -143,7 +142,7 @@ struct Function {
 
 impl Function {
     pub fn new(args:usize, id: usize) -> Function {
-        Function { id, args, code: vec![], funcs: HashMap::new(), tuples: vec![], matrices: vec![], pull_through: HashMap::new(), ret: Reference::None }
+        Function { id, args, code: vec![], funcs: HashMap::new(), tuples: vec![], matrices: vec![], ret: Reference::None }
     }
 }
 
@@ -177,6 +176,10 @@ impl Code {
         for key in func.funcs.keys()  {
             Code::create_function(func.funcs.get(key).unwrap(), out, func_indices, label_indices);
         }
+
+        let code_start = out.len();
+        func_indices.insert(func.id, (func.args, code_start));
+
         let mut index = out.len();
         for line in &func.code {
             match line {
@@ -187,8 +190,6 @@ impl Code {
                 _ => index += 1,
             }
         }
-        let code_start = out.len();
-        func_indices.insert(func.id, (func.args, code_start));
         for line in &func.code {
             match line {
                 Line::Comment(_) => continue,
@@ -254,6 +255,7 @@ impl Code {
                         Instr::JumpGreater(_, a, b) => out.push(Instr::JumpGreater(index, *a, *b)),
                         Instr::JumpLesserOrEqual(_, a, b) => out.push(Instr::JumpLesserOrEqual(index, *a, *b)),
                         Instr::JumpGreaterOrEqual(_, a, b) => out.push(Instr::JumpGreaterOrEqual(index, *a, *b)),
+                        Instr::JumpNotNone(_, a) => out.push(Instr::JumpNotNone(index, *a)),
                         _ => panic!("unreachable"),
                     }
                 },
@@ -267,9 +269,6 @@ impl Code {
             }
             for matrix in &func.matrices {
                 out.push(Instr::RemoveMatrix(*matrix));
-            }
-            for (_,(_, heap_id)) in &func.pull_through {
-                out.push(Instr::Free(*heap_id));
             }
         }
 
@@ -316,7 +315,7 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
 }
 
 fn generate_eval_function(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    generate_function(true, func, naming, node)?;
+    let func_id = generate_function(true, func, naming, node)?;
     Ok(Reference::Stack)
 }
 
@@ -712,10 +711,6 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
         
         inner_func.args = arg_index;
     
-        for (_, (pull_through_id, heap_id)) in &inner_func.pull_through {
-            func.code.push(Line::Instr(Instr::Alloc(*heap_id, Reference::Argument(*pull_through_id))))
-        }
-    
         let id = inner_func.id;
         func.funcs.insert(inner_func.id, inner_func);
         Ok(id)
@@ -818,23 +813,12 @@ fn generate_reference(func: &mut Function, naming: &mut Naming, node: &Box<ASTNo
         },
         Token::Pop => Ok(Reference::Stack),
         Token::Identifier(_) => {
-            let is_pullthrough = get_annotation!(node, "", Annotation::PullThrough(_id));
-            let mut global = true;
-            let id = get_annotation!(node, "", Annotation::GlobalId(id))
-                .or_else(|_| {global = false; get_annotation!(node, "definition requires id", Annotation::Id(id))})?;
-            
-            if let Ok(pull_through_id) = is_pullthrough {
-                let id = if let Some((_, heap_id)) = func.pull_through.get(id) {
-                    *heap_id
-                } else {
-                    let heap_id = naming.new_heap_id();
-                    func.pull_through.insert(*id, (*pull_through_id, heap_id));
-                    heap_id
-                };
-                Ok(Reference::Heap(id))
-            } else if get_annotation!(node, "", Annotation::GlobalId(id)).is_ok() {
+            if let Ok(pull_through_id) = get_annotation!(node, "", Annotation::PullThrough(_id)) {
+                Ok(Reference::Argument(*pull_through_id))
+            } else if let Ok(id) = get_annotation!(node, "", Annotation::GlobalId(id)) {
                 Ok(Reference::Global(*id))
             } else {
+                let id = get_annotation!(node, "definition requires id", Annotation::Id(id))?;
                 Ok(Reference::Argument(*id))
             }
         },
@@ -846,61 +830,72 @@ fn generate_reference(func: &mut Function, naming: &mut Naming, node: &Box<ASTNo
 fn generate_expression(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     match &node.node_type {
         ASTNodeType::Operator(token) => {
-            let ref2 = if matches!(token, Token::If) {
-                generate_tuple(func, naming, &node.children[1])?
-            } else {
-                generate_expression(func, naming, &node.children[1])?
-            };
-            let ref1 = generate_expression(func, naming, &node.children[0])?;
-            match token {
-                Token::Add => {
-                    func.code.push(Line::Instr(Instr::Add(ref1, ref2)));
-                },
-                Token::Subtract => {
-                    func.code.push(Line::Instr(Instr::Subtract(ref1, ref2)));
-                },
-                Token::Multiply => {
-                    func.code.push(Line::Instr(Instr::Multiply(ref1, ref2)));
-                },
-                Token::Divide => {
-                    func.code.push(Line::Instr(Instr::Divide(ref1, ref2)));
-                },
-                Token::Equals => {
-                    func.code.push(Line::Instr(Instr::Equal(ref1, ref2)));
-                },
-                Token::LessThan => {
-                    func.code.push(Line::Instr(Instr::Lesser(ref1, ref2)));
-                },
-                Token::GreaterThan => {
-                    func.code.push(Line::Instr(Instr::Greater(ref1, ref2)));
-                },
-                Token::LessThanOrEqual => {
-                    func.code.push(Line::Instr(Instr::LesserEqual(ref1, ref2)));
-                },
-                Token::GreaterThanOrEqual => {
-                    func.code.push(Line::Instr(Instr::GreaterEqual(ref1, ref2)));
-                },
-                Token::And => {
-                    func.code.push(Line::Instr(Instr::And(ref1, ref2)));
-                },
-                Token::Or => {
-                    func.code.push(Line::Instr(Instr::Or(ref1, ref2)));
-                },
-                Token::Xor => {
-                    func.code.push(Line::Instr(Instr::Xor(ref1, ref2)));
-                },
-                Token::If => {
-                    func.code.push(Line::Instr(Instr::Conditional(ref1, ref2, ref2)));
-                },
-                _ => return Err(GenerationError::new("could not resolve operator"))
-            }
+            if matches!(token, Token::If) {
+                let cond = generate_expression(func, naming, &node.children[0])?;
+                let false_outcome = naming.new_label_id();
+                let end = naming.new_label_id();
 
+                func.code.push(Line::Jump(Instr::JumpEqual(0, cond, Reference::Literal(0.0)), JumpType::Label(false_outcome)));
+                let true_reference = generate_expression(func, naming, &node.children[1].children[0])?;
+                if !matches!(true_reference, Reference::Stack) && !matches!(true_reference, Reference::None) {
+                    func.code.push(Line::Instr(Instr::Push(true_reference)));
+                }
+                func.code.push(Line::Jump(Instr::Jump(0), JumpType::Label(end)));
+                func.code.push(Line::Label(false_outcome));
+                let false_reference = generate_expression(func, naming, &node.children[1].children[2])?;
+                if !matches!(false_reference, Reference::Stack) && !matches!(false_reference, Reference::None) {
+                    func.code.push(Line::Instr(Instr::Push(false_reference)));
+                }
+                func.code.push(Line::Label(end));
+            } else {
+
+                let ref2 = generate_expression(func, naming, &node.children[1])?;
+                let ref1 = generate_expression(func, naming, &node.children[0])?;
+                match token {
+                    Token::Add => {
+                        func.code.push(Line::Instr(Instr::Add(ref1, ref2)));
+                    },
+                    Token::Subtract => {
+                        func.code.push(Line::Instr(Instr::Subtract(ref1, ref2)));
+                    },
+                    Token::Multiply => {
+                        func.code.push(Line::Instr(Instr::Multiply(ref1, ref2)));
+                    },
+                    Token::Divide => {
+                        func.code.push(Line::Instr(Instr::Divide(ref1, ref2)));
+                    },
+                    Token::Equals => {
+                        func.code.push(Line::Instr(Instr::Equal(ref1, ref2)));
+                    },
+                    Token::LessThan => {
+                        func.code.push(Line::Instr(Instr::Lesser(ref1, ref2)));
+                    },
+                    Token::GreaterThan => {
+                        func.code.push(Line::Instr(Instr::Greater(ref1, ref2)));
+                    },
+                    Token::LessThanOrEqual => {
+                        func.code.push(Line::Instr(Instr::LesserEqual(ref1, ref2)));
+                    },
+                    Token::GreaterThanOrEqual => {
+                        func.code.push(Line::Instr(Instr::GreaterEqual(ref1, ref2)));
+                    },
+                    Token::And => {
+                        func.code.push(Line::Instr(Instr::And(ref1, ref2)));
+                    },
+                    Token::Or => {
+                        func.code.push(Line::Instr(Instr::Or(ref1, ref2)));
+                    },
+                    Token::Xor => {
+                        func.code.push(Line::Instr(Instr::Xor(ref1, ref2)));
+                    },
+                    _ => return Err(GenerationError::new("could not resolve operator"))
+                }
+            }
             Ok(Reference::Stack)
         },
         _ => generate_value(func, naming, node)
     }
 }
-
 
 fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     if !matches!(node.node_type, ASTNodeType::Set(_)) {
@@ -911,14 +906,16 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
     let id = get_annotation!(node.children[0], "", Annotation::GlobalId(id))
         .or_else(|_| get_annotation!(node.children[0], "definition requires id", Annotation::Id(id)))?;
 
-    if is_exec {
+    let reference = if is_exec {
         let func_id = generate_function(false, func, naming, &node.children[1])?;
         let function = func.funcs.get(&func_id).expect("function");
         let func_id = function.id;
         if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
             func.code.push(Line::SetFuncGlobal(*id, func_id));
+            Reference::Global(*id)
         } else {
             func.code.push(Line::SetFunc(*id, func_id));
+            Reference::Argument(*id)
         }
     } else if is_expression_list {
         let mut inner_func = Function::new(0, naming.new_func_id());
@@ -928,8 +925,10 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
         func.funcs.insert(inner_func.id, inner_func);
         if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
             func.code.push(Line::SetFuncGlobal(*id, func_id));
+            Reference::Global(*id)
         } else {
             func.code.push(Line::SetFunc(*id, func_id));
+            Reference::Argument(*id)
         }
     } else {
         let mut rhs =match &node.children[1].node_type {
@@ -986,11 +985,14 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
         
         if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
             func.code.push(Line::Instr(Instr::SetGlobal(*id, rhs)));
+            Reference::Global(*id)
         } else {
             func.code.push(Line::Instr(Instr::SetArg(*id, rhs)));
+            Reference::Argument(*id)
         }
-    }
-    Ok(Reference::None)
+    };
+
+    Ok(reference)
 }
 
 fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<(), GenerationError> {
@@ -1005,16 +1007,16 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
     let mut end = 0;
     if !is_eval {
         end = naming.new_label_id();
-        func.code.push(Line::Instr(Instr::GetArg(arg_index)));
-        func.code.push(Line::Instr(Instr::Duplicate));
-        func.code.push(Line::Jump(Instr::JumpNotEqual(0, Reference::None, Reference::Stack), JumpType::Label(end)));
-        func.code.push(Line::Instr(Instr::Pop));
+        func.code.push(Line::Jump(Instr::JumpNotNone(0, Reference::Argument(arg_index)), JumpType::Label(end)));
     }
 
-    let reference = if is_exec {
+    if is_exec {
         let func_id = generate_function(is_eval, func, naming, &node.children[1])?;
-        func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
-        Reference::Stack
+        if is_eval {
+            func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
+        } else {
+            func.code.push(Line::ExecRef(Instr::SetArg(arg_index, Reference::None), func_id));
+        }
     } else if is_expression_list {
         let mut inner_func = Function::new(0, naming.new_func_id());
         let expression_list = generate_expression_list(&mut inner_func, naming, node)?;
@@ -1023,10 +1025,13 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
         let func_id = inner_func.id;
         func.funcs.insert(inner_func.id, inner_func);
 
-        func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
-        Reference::Stack
+        if is_eval {
+            func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
+        } else {
+            func.code.push(Line::ExecRef(Instr::SetArg(arg_index, Reference::None), func_id));
+        }
     } else {
-        match &node.children[1].node_type {
+        let reference = match &node.children[1].node_type {
             ASTNodeType::Meta => {
                 let reference = generate_expression(func, naming, &node.children[1].children[0])?;
                 let tuple_id = naming.new_tuple_id();
@@ -1050,14 +1055,16 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
                 }
             },
             _ => generate_expression(func, naming, &node.children[1])?,
+        };
+        
+        if is_eval {
+            func.code.push(Line::Instr(Instr::Push(reference)));
+        } else {
+            func.code.push(Line::Instr(Instr::SetArg(arg_index, reference)));
         }
-    };
+    }
 
     if !is_eval {
-        if !matches!(reference,Reference::Stack) {
-            func.code.push(Line::Instr(Instr::Push(reference)));
-        }
-
         func.code.push(Line::Label(end));
     }
 
@@ -1090,8 +1097,8 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            func1: (2; x:1) -> [10],
-            (1) -> func1;
+            fact: (x:0) -> [x = 0 ? (1; [(x-1) -> fact])];
+            (10)->fact,
         "));
 
 
