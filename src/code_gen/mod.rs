@@ -399,7 +399,7 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
 
 fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
     let mut inner_func = Function::new(2, naming.new_func_id());
-    let exec_id = generate_exec(is_eval, func, naming, &node.children[1])
+    let exec_id = generate_exec(false, func, naming, &node.children[1])
     .or_else(|_| {
         let mut inner_func = Function::new(0,naming.new_func_id());
         let reference = generate_expression_list(&mut inner_func, naming, node)?;
@@ -408,14 +408,13 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
         func.funcs.insert(inner_func.id, inner_func);
         Ok(id)
     })?;
-    let mut lhs = None;
-    match &node.children[0].node_type {
+    let mut lhs = match &node.children[0].node_type {
         ASTNodeType::Meta => {
             let reference = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
             let tuple_id = naming.new_tuple_id();
             func.tuples.push(tuple_id);
             inner_func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-            lhs = Some(Reference::Tuple(tuple_id));
+            Reference::Tuple(tuple_id)
         },
         ASTNodeType::Meta2D => {
             let height = generate_expression(&mut inner_func, naming, &node.children[0].children[1])?;
@@ -423,241 +422,33 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
             let matrix_id = naming.new_matrix_id();
             func.matrices.push(matrix_id);
             inner_func.code.push(Line::Instr(Instr::CreateMatrix(matrix_id, width, height)));
-            lhs = Some(Reference::Matrix(matrix_id));
+            Reference::Matrix(matrix_id)
         },
         ASTNodeType::Tuple(_) => {
             if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[0])? {
-                lhs = Some(Reference::Tuple(id));
+                Reference::Tuple(id)
             } else {
                 return Err(GenerationError::new("expected tuple as lhs"))
             }
         },
         ASTNodeType::Reference(_) => {
             match generate_reference(func, naming, node)? {
-                Reference::Tuple(id) => lhs = Some(Reference::Tuple(id)),
-                Reference::Matrix(id) => lhs = Some(Reference::Matrix(id)),
+                Reference::Tuple(id) => Reference::Tuple(id),
+                Reference::Matrix(id) => Reference::Matrix(id),
                 _=> return Err(GenerationError::new("expected reference to be a tuple or matrix")),
             }
         }
-        _ => (),
+        _ => return Err(GenerationError::new("invalid lhs for extended exec")),
+    };
+
+    match node.node_type {
+        ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::Reduce(Reference::None, lhs), exec_id)),
+        ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEach(Reference::None, lhs), exec_id)),
+        ASTNodeType::Into => inner_func.code.push(Line::ExecRef(Instr::Into(Reference::None, lhs), exec_id)),
+        _ => return Err(GenerationError::new("expected extended func"))
     }
 
-    let exec_func = func.funcs.get(&exec_id).expect("function");
-    if let Some(lhs) = lhs {
-        // init i and accumulator 
-        inner_func.code.push(Line::Instr(Instr::SetArg(0, Reference::Literal(0.0))));
-        inner_func.code.push(Line::Instr(Instr::SetArg(1, Reference::Literal(0.0))));
-        match node.node_type {
-            ASTNodeType::Reduce => {
-                let start = naming.new_label_id();
-                let end = naming.new_label_id();
-                let end_of_func = naming.new_label_id();
-
-                // start of loop
-                inner_func.code.push(Line::Label(start));
-
-                // conditional of loop
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.code.push(Line::Instr(Instr::LenTuple(id)));
-                        inner_func.code.push(Line::Jump(Instr::JumpGreaterOrEqual(0, Reference::Argument(0), Reference::Stack), JumpType::Label(end)))
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.code.push(Line::Instr(Instr::LenMatrix(id)));
-                        inner_func.code.push(Line::Jump(Instr::JumpGreaterOrEqual(0, Reference::Argument(0), Reference::Stack), JumpType::Label(end)))
-                    }
-                    _ => panic!("unreachable"),
-                }
-
-                // create argument to pass accumulator
-                inner_func.code.push(Line::Instr(Instr::GetArg(1)));
-
-                //create arguments and frame for exec func
-                for _ in 0..exec_func.args {
-                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
-                }
-                inner_func.code.push(Line::CallInline(exec_func.args+1, end_of_func));
-
-                // push accumulator onto stack
-                inner_func.code.push(Line::Instr(Instr::GetArg(exec_func.args)));
-
-                // call exec
-                inner_func.code.push(Line::Jump(Instr::Jump(0), JumpType::Function(exec_id)));
-
-                // frame is popped by exec, result is on stack
-                inner_func.code.push(Line::Label(end_of_func));
-
-                // add result to accumulator
-                inner_func.code.push(Line::Instr(Instr::Add(Reference::Argument(1),  Reference::Stack)));
-                inner_func.code.push(Line::Instr(Instr::SetArg(1, Reference::Stack)));
-
-                // increment i
-                inner_func.code.push(Line::Instr(Instr::Add(Reference::Literal(1.0), Reference::Argument(0))));
-                inner_func.code.push(Line::Instr(Instr::SetArg(0, Reference::Stack)));
-
-                // loop
-                inner_func.code.push(Line::Jump(Instr::Jump(0), JumpType::Label(start)));
-
-                // end of loop
-                inner_func.code.push(Line::Label(end));
-                
-                inner_func.code.push(Line::Instr(Instr::GetArg(1)));
-                inner_func.ret = Reference::Stack;
-            },
-            ASTNodeType::ForEach => {
-                let start = naming.new_label_id();
-                let end = naming.new_label_id();
-                let end_of_func = naming.new_label_id();
-
-                // start of loop
-                inner_func.code.push(Line::Label(start));
-
-                // conditional of loop
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.code.push(Line::Instr(Instr::LenTuple(id)));
-                        inner_func.code.push(Line::Jump(Instr::JumpGreaterOrEqual(0, Reference::Argument(0), Reference::Stack), JumpType::Label(end)))
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.code.push(Line::Instr(Instr::LenMatrix(id)));
-                        inner_func.code.push(Line::Jump(Instr::JumpGreaterOrEqual(0, Reference::Argument(0), Reference::Stack), JumpType::Label(end)))
-                    }
-                    _ => panic!("unreachable"),
-                }
-
-                // create argument to pass element
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.code.push(Line::Instr(Instr::GetTuple(id, Reference::Argument(0))));
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.code.push(Line::Instr(Instr::GetFlatMatrix(id, Reference::Argument(0))));
-
-                    }
-                    _ => panic!("unreachable"),
-                }
-
-                //create arguments and frame for exec func
-                for _ in 0..exec_func.args {
-                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
-                }
-                inner_func.code.push(Line::CallInline(exec_func.args+1, end_of_func));
-
-                // push element onto stack
-                inner_func.code.push(Line::Instr(Instr::GetArg(exec_func.args)));
-
-                // call exec
-                inner_func.code.push(Line::Jump(Instr::Jump(0), JumpType::Function(exec_id)));
-
-                // frame is popped by exec, result is on stack
-                inner_func.code.push(Line::Label(end_of_func));
-
-                // increment i
-                inner_func.code.push(Line::Instr(Instr::Add(Reference::Literal(1.0), Reference::Argument(0))));
-                inner_func.code.push(Line::Instr(Instr::SetArg(0, Reference::Stack)));
-
-                // loop
-                inner_func.code.push(Line::Jump(Instr::Jump(0), JumpType::Label(start)));
-
-                // end of loop
-                inner_func.code.push(Line::Label(end));
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.ret = Reference::Tuple(id);
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.ret = Reference::Matrix(id);
-
-                    }
-                    _ => panic!("unreachable"),
-                }
-            },
-            ASTNodeType::Into => {
-                let start = naming.new_label_id();
-                let end = naming.new_label_id();
-                let end_of_func = naming.new_label_id();
-
-                // start of loop
-                inner_func.code.push(Line::Label(start));
-
-                // conditional of loop
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.code.push(Line::Instr(Instr::LenTuple(id)));
-                        inner_func.code.push(Line::Jump(Instr::JumpGreaterOrEqual(0, Reference::Argument(0), Reference::Stack), JumpType::Label(end)))
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.code.push(Line::Instr(Instr::LenMatrix(id)));
-                        inner_func.code.push(Line::Jump(Instr::JumpGreaterOrEqual(0, Reference::Argument(0), Reference::Stack), JumpType::Label(end)))
-                    }
-                    _ => panic!("unreachable"),
-                }
-
-                // create argument to pass element
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.code.push(Line::Instr(Instr::GetTuple(id, Reference::Argument(1))));
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.code.push(Line::Instr(Instr::GetFlatMatrix(id, Reference::Argument(1))));
-
-                    }
-                    _ => panic!("unreachable"),
-                }
-
-                //create arguments and frame for exec func
-                for _ in 0..exec_func.args {
-                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
-                }
-                inner_func.code.push(Line::CallInline(exec_func.args+1, end_of_func));
-
-                // push element onto stack
-                inner_func.code.push(Line::Instr(Instr::GetArg(exec_func.args)));
-
-                // call exec
-                inner_func.code.push(Line::Jump(Instr::Jump(0), JumpType::Function(exec_id)));
-
-                // frame is popped by exec, result is on stack
-                inner_func.code.push(Line::Label(end_of_func));
-
-                // set element to returned
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.code.push(Line::Instr(Instr::SetTuple(id, Reference::Argument(0), Reference::Stack)));
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.code.push(Line::Instr(Instr::SetFlatMatrix(id, Reference::Argument(0), Reference::Stack)));
-
-                    }
-                    _ => panic!("unreachable"),
-                }
-
-                // increment i
-                inner_func.code.push(Line::Instr(Instr::Add(Reference::Literal(1.0), Reference::Argument(0))));
-                inner_func.code.push(Line::Instr(Instr::SetArg(0, Reference::Stack)));
-
-                // loop
-                inner_func.code.push(Line::Jump(Instr::Jump(0), JumpType::Label(start)));
-
-                // end of loop
-                inner_func.code.push(Line::Label(end));
-
-                match lhs {
-                    Reference::Tuple(id) => {
-                        inner_func.ret = Reference::Tuple(id);
-                    }
-                    Reference::Matrix(id) => {
-                        inner_func.ret = Reference::Matrix(id);
-
-                    }
-                    _ => panic!("unreachable"),
-                }
-            },
-            _ => return Err(GenerationError::new("expected an extended function type node"))
-        }
-    } else {
-        return Err(GenerationError::new("expected a tuple or matrix as the lhs"))
-    }
+    func.code.push(Line::Call(inner_func.id));
 
     let id = inner_func.id;
     func.funcs.insert(inner_func.id, inner_func);
@@ -1097,8 +888,7 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            fact: (x:0) -> [x = 0 ? (1; [(x-1) -> fact])];
-            (10)->fact,
+            {10} *> (x:10) -> [x];
         "));
 
 
