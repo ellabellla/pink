@@ -27,6 +27,7 @@ impl fmt::Display for InstrError {
 pub enum Reference {
     Executable(usize, usize),
     Stack,
+    StackPeek,
     Literal(f64),
     Global(usize),
     Argument(usize),
@@ -41,6 +42,7 @@ impl Reference {
     pub fn to_number(&self, x: usize, y: usize, vm:  &mut VM) -> Option<f64> {
         match self {
             Reference::Stack => vm.stack.pop().and_then(|data| data.to_number(vm)),
+            Reference::StackPeek => vm.stack.peek().and_then(|data| data.to_number(vm)),
             Reference::Global(index) => {
                 let reference = vm.globals.get(*index)?.clone();
                 reference.to_number(x, y, vm)
@@ -80,10 +82,22 @@ impl Reference {
             let mut ref_type = Reference::None;
             match header {
                 '_' => {
+                    chars.next();
                     return Ok(Reference::None)
                 },
                 '@' => {
-                    return Ok(Reference::Stack)
+                    chars.next();
+                    if let Some(header) = chars.peek() {
+                        if *header == '@' {
+                            chars.next();
+                            return Ok(Reference::StackPeek)
+                        } else {
+                            return Ok(Reference::Stack)
+
+                        }
+                    } else {
+                        return Ok(Reference::Stack)
+                    }
                 },
                 'G' => {
                     ref_type = Reference::Global(0);
@@ -140,6 +154,7 @@ impl ToString for Reference {
         match self {
             Reference::None => String::from("_"),
             Reference::Stack => String::from("@"),
+            Reference::StackPeek => String::from("@@"),
             Reference::Global(index) => String::from(format!("G{}", index)),
             Reference::Argument(index) => String::from(format!("A{}", index)),
             Reference::Heap(index) => String::from(format!("H{}", index)),
@@ -216,6 +231,10 @@ pub enum Instr {
     Free(usize),
     Point(usize),
     SetPoint(usize, Reference),
+
+    Reduce(Reference, Reference),
+    Into(Reference, Reference),
+    ForEach(Reference, Reference),    
 }
 
 
@@ -287,6 +306,9 @@ impl Instr {
             "FREE" => Ok(Instr::Free(parse_usize(chars)?)),
             "PONT" => Ok(Instr::Point(parse_usize(chars)?)),
             "STPT" => Ok(Instr::SetPoint(parse_usize(chars)?, Reference::from_str(chars)?)),
+            "RDCE" => Ok(Instr::Reduce(Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "INTO" => Ok(Instr::Into(Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "FREH" => Ok(Instr::ForEach(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             _ => Err(InstrError::new("couldn't parse instr"))
         }
 
@@ -347,6 +369,9 @@ impl ToString for Instr {
             Instr::Free(a) => format!("FREE {}", a.to_string()),
             Instr::Point(a) => format!("PONT {}", a.to_string()),
             Instr::SetPoint(a,  b) => format!("STPT {} {}", a.to_string(), b.to_string()),
+            Instr::Reduce(a, b) => format!("RDCE {} {}", a.to_string(), b.to_string()),
+            Instr::Into(a, b) => format!("INTO {} {}", a.to_string(), b.to_string()),
+            Instr::ForEach(a, b) => format!("FREH {} {}", a.to_string(), b.to_string()),
         }
     }
 }
@@ -588,7 +613,7 @@ mod instr_ops {
         }
     }
     pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
-        vm.stack.push(Data::Frame(a, 0, vm.instr_pointer));
+        vm.stack.push(Data::Frame(a, 0, vm.instr_pointer+1));
         vm.instr_pointer = b;
         Ok(None)
     }
@@ -885,6 +910,13 @@ impl VM {
                         Reference::Matrix(_) => b,
                         Reference::Tuple(_) => b,
                         Reference::None => b,
+                        Reference::StackPeek => {
+                            if let Some(Data::Reference(reference)) = self.stack.peek() {
+                                reference
+                             } else {
+                                 Reference::None
+                             }
+                        },
                     };
 
                     if !matches!(reference, Reference::None) {
@@ -925,6 +957,199 @@ impl VM {
                         Err(InstrError::new("couldn't set data on heap"))
                     }
                 },
+                Instr::Reduce(a, b) => {
+                    if let Reference::Executable(argc, instr_pointer) = a {
+                        match self.eval_tuple_or_matrix(b) {
+                            Reference::Matrix(id) => {
+                                if !self.matrices.contains_key(&id) {
+                                    Err(InstrError::new("invalid index of matrix"))
+                                } else {
+                                    let (width, height) =  {
+                                        let matrix = self.matrices.get(&id).unwrap();
+                                        (matrix.width(), matrix.height())
+                                    };
+
+                                    let mut acc = 0.0;
+
+                                    for y in 0..height {
+                                        for x in 0..width {
+                                            let num = self.matrices.get(&id).unwrap().get(x, y).unwrap();
+                                            let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                                vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(acc)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(num)));
+                                            });
+
+                                            let num = match reference.to_number(0, 0, self) {
+                                                Some(num) => num,
+                                                None => return Err(InstrError::new("func return value must be a number")),
+                                            };
+
+                                            acc += num;
+                                        }
+                                    }
+
+                                    Ok(None)
+                                }
+                            },
+                            Reference::Tuple(id) => {
+                                if !self.tuples.contains_key(&id) {
+                                    Err(InstrError::new("invalid index of matrix"))
+                                } else {
+                                    let len =  {
+                                        let tuple = self.tuples.get(&id).unwrap();
+                                        tuple.len()
+                                    };
+
+                                    let mut acc = 0.0;
+
+                                    for x in 0..len {
+                                        let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
+                                        let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                            vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                            vm.stack.push(Data::Reference(Reference::Literal(acc)));
+                                            vm.stack.push(Data::Reference(reference));
+                                        });
+
+                                        let num = match reference.to_number(0, 0, self) {
+                                            Some(num) => num,
+                                            None => return Err(InstrError::new("func return value must be a number")),
+                                        };
+
+                                        acc += num;
+                                    }
+
+                                    Ok(None)
+                                }
+                            },
+                            _ => {
+                                Err(InstrError::new("second ref must be a tuple or matrix"))
+                            }
+                        }
+                    } else {
+                        Err(InstrError::new("first ref must be a executable"))
+                    }
+                },
+                Instr::Into(a, b) => {
+                    if let Reference::Executable(argc, instr_pointer) = a {
+                        match self.eval_tuple_or_matrix(b) {
+                            Reference::Matrix(id) => {
+                                if !self.matrices.contains_key(&id) {
+                                    Err(InstrError::new("invalid index of matrix"))
+                                } else {
+                                    let (width, height) =  {
+                                        let matrix = self.matrices.get(&id).unwrap();
+                                        (matrix.width(), matrix.height())
+                                    };
+
+                                    for y in 0..height {
+                                        for x in 0..width {
+                                            let num = self.matrices.get(&id).unwrap().get(x, y).unwrap();
+                                            let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                                vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(num)));
+                                            });
+
+                                            let num = match reference.to_number(0, 0, self) {
+                                                Some(num) => num,
+                                                None => return Err(InstrError::new("func return value must be a number")),
+                                            };
+
+                                            
+                                            self.matrices.get_mut(&id).unwrap().set(x, y, num);
+                                        }
+                                    }
+
+                                    Ok(None)
+                                }
+                            },
+                            Reference::Tuple(id) => {
+                                if !self.tuples.contains_key(&id) {
+                                    Err(InstrError::new("invalid index of matrix"))
+                                } else {
+                                    let len =  {
+                                        let tuple = self.tuples.get(&id).unwrap();
+                                        tuple.len()
+                                    };
+
+                                    for x in 0..len {
+                                        let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
+                                        let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                            vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                            vm.stack.push(Data::Reference(reference));
+                                        });
+
+                                        *self.tuples.get_mut(&id).unwrap().get_mut(x).unwrap() = reference;
+                                    }
+
+                                    Ok(None)
+                                }
+                            },
+                            _ => {
+                                Err(InstrError::new("second ref must be a tuple or matrix"))
+                            }
+                        }
+                    } else {
+                        Err(InstrError::new("first ref must be a executable"))
+                    }
+                },
+                Instr::ForEach(a, b) => {
+                    if let Reference::Executable(argc, instr_pointer) = a {
+                        match self.eval_tuple_or_matrix(b) {
+                            Reference::Matrix(id) => {
+                                if !self.matrices.contains_key(&id) {
+                                    Err(InstrError::new("invalid index of matrix"))
+                                } else {
+                                    let (width, height) =  {
+                                        let matrix = self.matrices.get(&id).unwrap();
+                                        (matrix.width(), matrix.height())
+                                    };
+
+                                    for y in 0..height {
+                                        for x in 0..width {
+                                            let num = self.matrices.get(&id).unwrap().get(x, y).unwrap();
+                                            self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                                vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                                vm.stack.push(Data::Reference(Reference::Literal(num)));
+                                            });
+                                        }
+                                    }
+
+                                    Ok(None)
+                                }
+                            },
+                            Reference::Tuple(id) => {
+                                if !self.tuples.contains_key(&id) {
+                                    Err(InstrError::new("invalid index of matrix"))
+                                } else {
+                                    let len =  {
+                                        let tuple = self.tuples.get(&id).unwrap();
+                                        tuple.len()
+                                    };
+
+
+                                    for x in 0..len {
+                                        let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
+                                        self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                            vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                            vm.stack.push(Data::Reference(reference));
+                                        });
+                                    }
+
+                                    Ok(None)
+                                }
+                            },
+                            _ => {
+                                Err(InstrError::new("second ref must be a tuple or matrix"))
+                            }
+                        }
+                    } else {
+                        Err(InstrError::new("first ref must be a executable"))
+                    }
+                }
             };
 
             if let Ok(value) = res {
@@ -950,6 +1175,49 @@ impl VM {
             }
         }
         Reference::Stack
+    }
+
+    fn execute_inline(&mut self, argc: usize, instr_pointer: usize, op: &mut dyn FnMut(&mut VM)->()) -> Reference {
+        let prev_instr_pointer = self.instr_pointer;
+        self.stack.push(Data::Frame(argc, 0, self.instr_pointer));
+        op(self);
+        self.instr_pointer = instr_pointer;
+        while self.instr_pointer != prev_instr_pointer && self.instr_pointer < self.instrs.len() {
+            if let Err(err) = self.eval_instr() {
+                panic!("{}", err.msg);
+            }
+        }
+        Reference::Stack
+    }
+
+    fn eval_tuple_or_matrix(&mut self, reference: Reference) -> Reference {
+        match reference {
+            Reference::Global(id) => {
+                if let Some(reference) = self.globals.get(id) {
+                    match reference {
+                        Reference::Tuple(_) => *reference,
+                        Reference::Matrix(_) => *reference,
+                        _ => Reference::None,
+                    }
+                } else {
+                    Reference::None
+                }
+            },
+            Reference::Argument(id) => {
+                if let Some(reference) = self.stack.get_arg(id) {
+                    match reference {
+                        Reference::Tuple(_) => reference,
+                        Reference::Matrix(_) => reference,
+                        _ => Reference::None,
+                    }
+                } else {
+                    Reference::None
+                }
+            },
+            Reference::Matrix(_) => reference,
+            Reference::Tuple(_) => reference,
+            _ => Reference::None
+        }
     }
 
     #[allow(dead_code)]
