@@ -226,6 +226,9 @@ impl Code {
                         Instr::ExecRef(_) => Instr::ExecRef(Reference::Executable(*argc, *index)),
                         Instr::Alloc(a, _) => Instr::Alloc(*a, Reference::Executable(*argc, *index)),
                         Instr::SetPoint(a, _) => Instr::SetPoint(*a, Reference::Executable(*argc, *index)),
+                        Instr::Reduce(_, a) => Instr::Reduce(Reference::Executable(*argc, *index), *a),
+                        Instr::Into(_, a) => Instr::Into(Reference::Executable(*argc, *index), *a),
+                        Instr::ForEach(_, a) => Instr::ForEach(Reference::Executable(*argc, *index), *a),
                         _ => todo!(),
                     })
                 },
@@ -399,7 +402,7 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
 
 fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
     let mut inner_func = Function::new(2, naming.new_func_id());
-    let exec_id = generate_exec(false, func, naming, &node.children[1])
+    let exec_id = generate_exec(false, &mut inner_func, naming, &node.children[1])
     .or_else(|_| {
         let mut inner_func = Function::new(0,naming.new_func_id());
         let reference = generate_expression_list(&mut inner_func, naming, node)?;
