@@ -227,8 +227,10 @@ impl Code {
                         Instr::Alloc(a, _) => Instr::Alloc(*a, Reference::Executable(*argc, *index)),
                         Instr::SetPoint(a, _) => Instr::SetPoint(*a, Reference::Executable(*argc, *index)),
                         Instr::Reduce(_, a) => Instr::Reduce(Reference::Executable(*argc, *index), *a),
+                        Instr::ReduceRange(_, a, b, c) => Instr::ReduceRange(Reference::Executable(*argc, *index), *a, *b, *c),
                         Instr::Into(_, a) => Instr::Into(Reference::Executable(*argc, *index), *a),
                         Instr::ForEach(_, a) => Instr::ForEach(Reference::Executable(*argc, *index), *a),
+                        Instr::ForEachRange(_, a, b, c) => Instr::ForEachRange(Reference::Executable(*argc, *index), *a, *b, *c),
                         _ => todo!(),
                     })
                 },
@@ -269,9 +271,6 @@ impl Code {
             let func = func.funcs.get(key).expect("should already be defined");
             for tuple in &func.tuples {
                 out.push(Instr::RemoveTuple(*tuple));
-            }
-            for matrix in &func.matrices {
-                out.push(Instr::RemoveMatrix(*matrix));
             }
         }
 
@@ -411,22 +410,9 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
         func.funcs.insert(inner_func.id, inner_func);
         Ok(id)
     })?;
-    let mut lhs = match &node.children[0].node_type {
-        ASTNodeType::Meta => {
-            let reference = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
-            let tuple_id = naming.new_tuple_id();
-            func.tuples.push(tuple_id);
-            inner_func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-            Reference::Tuple(tuple_id)
-        },
-        ASTNodeType::Meta2D => {
-            let height = generate_expression(&mut inner_func, naming, &node.children[0].children[1])?;
-            let width = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
-            let matrix_id = naming.new_matrix_id();
-            func.matrices.push(matrix_id);
-            inner_func.code.push(Line::Instr(Instr::CreateMatrix(matrix_id, width, height)));
-            Reference::Matrix(matrix_id)
-        },
+    let lhs = match &node.children[0].node_type {
+        ASTNodeType::Range =>  Reference::None,
+        ASTNodeType::RangeComplex => Reference::None,
         ASTNodeType::Tuple(_) => {
             if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[0])? {
                 Reference::Tuple(id)
@@ -444,11 +430,34 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
         _ => return Err(GenerationError::new("invalid lhs for extended exec")),
     };
 
-    match node.node_type {
-        ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::Reduce(Reference::None, lhs), exec_id)),
-        ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEach(Reference::None, lhs), exec_id)),
-        ASTNodeType::Into => inner_func.code.push(Line::ExecRef(Instr::Into(Reference::None, lhs), exec_id)),
-        _ => return Err(GenerationError::new("expected extended func"))
+    if lhs != Reference::None {
+        match node.node_type {
+            ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::Reduce(Reference::None, lhs), exec_id)),
+            ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEach(Reference::None, lhs), exec_id)),
+            ASTNodeType::Into => inner_func.code.push(Line::ExecRef(Instr::Into(Reference::None, lhs), exec_id)),
+            _ => return Err(GenerationError::new("expected extended func"))
+        }
+    } else {
+        let (start, end, step) = match &node.children[0].node_type {
+            ASTNodeType::Range => {
+                let start = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
+                let end = generate_expression(&mut inner_func, naming, &node.children[0].children[1])?;
+                (start, end, Reference::Literal(1.0))
+            },
+            ASTNodeType::RangeComplex => {
+                let start = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
+                let end = generate_expression(&mut inner_func, naming, &node.children[0].children[1])?;
+                let step = generate_expression(&mut inner_func, naming, &node.children[0].children[2])?;
+                (start, end, step)
+            },
+            _ => return Err(GenerationError::new("invalid lhs for extended exec")),
+        };
+
+        match node.node_type {
+            ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::ReduceRange(Reference::None, start, end, step), exec_id)),
+            ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEachRange(Reference::None, start, end, step), exec_id)),
+            _ => return Err(GenerationError::new("expected extended func"))
+        }
     }
 
     func.code.push(Line::Call(inner_func.id));
@@ -569,22 +578,12 @@ fn generate_expression_list(func: &mut Function, naming: &mut Naming, node: &Box
 fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     let reference = generate_reference(func, naming, &node.children[0])?;
 
-    if let ASTNodeType::Meta = &node.children[1].node_type {
-        let x = generate_expression(func, naming, &node.children[1])?;
-        let index = if let Reference::Tuple(index) = reference {
-            index
-        } else {
-            return Err(GenerationError::new("indexed reference must be a tuple"))
-        };
-        func.code.push(Line::Instr(Instr::GetTuple(index, x)))
-    } else if let ASTNodeType::Meta2D = &node.children[1].node_type {
-        let x = generate_expression(func, naming, &node.children[1])?;
-        let y = generate_expression(func, naming, &node.children[2])?;
-        let index = if let Reference::Matrix(index) = reference {
-            index
-        } else {
-            return Err(GenerationError::new("indexed reference must be a matrix"))
-        };
+    if let ASTNodeType::Index = &node.children[1].node_type {
+        let x = generate_expression(func, naming, &node.children[1].children[0])?;
+        func.code.push(Line::Instr(Instr::GetTupleReference(reference, x)))
+    } else if let ASTNodeType::Index2D = &node.children[1].node_type {
+        let x = generate_expression(func, naming, &node.children[1].children[0])?;
+        let y = generate_expression(func, naming, &node.children[1].children[1])?;
         func.code.push(Line::Instr(Instr::GetMatrix(index, x, y)))
     } else {
         return Err(GenerationError::new("Expected meta in indexed value"))
@@ -700,55 +699,32 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
     let id = get_annotation!(node.children[0], "", Annotation::GlobalId(id))
         .or_else(|_| get_annotation!(node.children[0], "definition requires id", Annotation::Id(id)))?;
 
-    let reference = if is_exec {
-        let func_id = generate_function(false, func, naming, &node.children[1])?;
-        let function = func.funcs.get(&func_id).expect("function");
-        let func_id = function.id;
-        if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
-            func.code.push(Line::SetFuncGlobal(*id, func_id));
-            Reference::Global(*id)
+    let reference = {
+        let mut rhs = if is_exec {
+            let func_id = generate_function(false, func, naming, &node.children[1])?;
+            let function = func.funcs.get(&func_id).expect("function");
+            let func_id = function.id;
+            func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
+            Reference::Stack
+        } else if is_expression_list {
+            let mut inner_func = Function::new(0, naming.new_func_id());
+            let func_id = inner_func.id;
+            let expression_list = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
+            inner_func.ret = expression_list;
+            func.funcs.insert(inner_func.id, inner_func);
+            func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
+            Reference::Stack
         } else {
-            func.code.push(Line::SetFunc(*id, func_id));
-            Reference::Argument(*id)
-        }
-    } else if is_expression_list {
-        let mut inner_func = Function::new(0, naming.new_func_id());
-        let func_id = inner_func.id;
-        let expression_list = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
-        inner_func.ret = expression_list;
-        func.funcs.insert(inner_func.id, inner_func);
-        if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
-            func.code.push(Line::SetFuncGlobal(*id, func_id));
-            Reference::Global(*id)
-        } else {
-            func.code.push(Line::SetFunc(*id, func_id));
-            Reference::Argument(*id)
-        }
-    } else {
-        let mut rhs =match &node.children[1].node_type {
-            ASTNodeType::Meta => {
-                let reference = generate_expression(func, naming, &node.children[1].children[0])?;
-                let tuple_id = naming.new_tuple_id();
-                func.tuples.push(tuple_id);
-                func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-                Reference::Tuple(tuple_id)
-            },
-            ASTNodeType::Meta2D => {
-                let height = generate_expression(func, naming, &node.children[1].children[1])?;
-                let width = generate_expression(func, naming, &node.children[1].children[0])?;
-                let matrix_id = naming.new_matrix_id();
-                func.matrices.push(matrix_id);
-                func.code.push(Line::Instr(Instr::CreateMatrix(matrix_id, width, height)));
-                Reference::Matrix(matrix_id)
-            },
-            ASTNodeType::Tuple(_) => {
-                if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[1])? {
-                    Reference::Tuple(id)
-                } else {
-                    return Err(GenerationError::new("expected tuple as lhs"))
-                }
-            },
-            _ => generate_expression(func, naming, &node.children[1])?,
+            match &node.children[1].node_type {
+                ASTNodeType::Tuple(_) => {
+                    if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[1])? {
+                        Reference::Tuple(id)
+                    } else {
+                        return Err(GenerationError::new("expected tuple as lhs"))
+                    }
+                },
+                _ => generate_expression(func, naming, &node.children[1])?,
+            }
         };
 
         let lhs = if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
@@ -826,21 +802,6 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
         }
     } else {
         let reference = match &node.children[1].node_type {
-            ASTNodeType::Meta => {
-                let reference = generate_expression(func, naming, &node.children[1].children[0])?;
-                let tuple_id = naming.new_tuple_id();
-                func.tuples.push(tuple_id);
-                func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-                Reference::Tuple(tuple_id)
-            },
-            ASTNodeType::Meta2D => {
-                let height = generate_expression(func, naming, &node.children[1].children[1])?;
-                let width = generate_expression(func, naming, &node.children[1].children[0])?;
-                let matrix_id = naming.new_matrix_id();
-                func.matrices.push(matrix_id);
-                func.code.push(Line::Instr(Instr::CreateMatrix(matrix_id, width, height)));
-                Reference::Matrix(matrix_id)
-            },
             ASTNodeType::Tuple(_) => {
                 if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[1])? {
                     Reference::Tuple(id)
@@ -891,7 +852,8 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            {10} *> (x:10) -> [x];
+            var:(10);
+            var(0);
         "));
 
 
