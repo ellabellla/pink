@@ -31,8 +31,10 @@ pub enum ASTNodeType {
 
     Indexed,
     
-    Meta2D,
-    Meta,
+    Index2D,
+    Index,
+    Range,
+    RangeComplex,
 
     Reference(Token),
     Number(f64),

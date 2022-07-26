@@ -130,8 +130,8 @@ impl VariableType {
             ASTNodeType::ExpressionList(_) => Ok(VariableType::ExpressionList),
             ASTNodeType::Tuple(_) => Ok(VariableType::Tuple),
             ASTNodeType::Indexed => Ok(VariableType::Number),
-            ASTNodeType::Meta2D => Ok(VariableType::Matrix),
-            ASTNodeType::Meta => Ok(VariableType::Tuple),
+            ASTNodeType::Range => Ok(VariableType::Tuple),
+            ASTNodeType::RangeComplex => Ok(VariableType::Tuple),
             ASTNodeType::Reference(ref_type) => match ref_type {
                 Token::Identifier(ident) => {
                     if let Some(variable) = data.globals.variables.get(ident) {
@@ -263,13 +263,6 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
     }
 
     match node.children[1].node_type {
-        ASTNodeType::Meta => {
-            validate_expression(data, &mut node.children[1].children[0], pull_through)
-        }, 
-        ASTNodeType::Meta2D => {
-            validate_expression(data, &mut node.children[1].children[0], pull_through)?;
-            validate_expression(data, &mut node.children[1].children[1], pull_through)
-        },
         ASTNodeType::ExpressionList(_) => validate_exec( false, data, &mut node.children[1]),
         ASTNodeType::Exec => validate_exec( false, data, &mut node.children[1]),
         ASTNodeType::Reduce => validate_extended_exec(false, data, &mut node.children[1]),
@@ -423,8 +416,8 @@ fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>
 fn validate_extended_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
     validate_exec(is_eval, data, &mut node.children[1]).or_else(|_| validate_expression_list(data, &mut node.children[1]))?;
     match &node.children[0].node_type {
-        ASTNodeType::Meta => Ok(()),
-        ASTNodeType::Meta2D => Ok(()),
+        ASTNodeType::Range => Ok(()),
+        ASTNodeType::RangeComplex => Ok(()),
         ASTNodeType::Tuple(_) => validate_tuple(data, node),
         ASTNodeType::Reference(Token::Identifier(ident)) => {
             if let Some(variable) = data.globals.variables.get(ident) {
@@ -552,11 +545,11 @@ fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<
         create_semantic_error!(node, "identifier must be defined before it is used")?
     }.clone();
     match node.children[1].node_type {
-        ASTNodeType::Meta => {
+        ASTNodeType::Index => {
             validate_expression(data, &mut node.children[1].children[0], false)?;
             is!(var_type, "variable must be a tuple", VariableType::Tuple)?
         }, 
-        ASTNodeType::Meta2D => {
+        ASTNodeType::Index2D => {
             validate_expression(data, &mut node.children[1].children[0], false)?;
             validate_expression(data, &mut node.children[1].children[1], false)?;
             is!(var_type, "variable must be a matrix", VariableType::Matrix)?
@@ -648,8 +641,8 @@ mod tests {
             var2: 2*2;
             var2: 4;
             var3: (1; x:2; y:1) -> [(y) -> [1]];
-            var4: {1;2};
             2* 2 ? (2; 2);
+            var0(1);
         "));
 
         assert_eq!(validate(&mut tree), Ok(()));
