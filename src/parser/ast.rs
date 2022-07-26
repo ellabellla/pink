@@ -27,7 +27,9 @@ pub enum ASTNodeType {
 
     Set(Token),
 
+    Matrix,
     Tuple(usize),
+    TupleConstructor,
 
     Indexed,
     
