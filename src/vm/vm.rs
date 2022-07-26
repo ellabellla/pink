@@ -232,9 +232,11 @@ pub enum Instr {
     Point(usize),
     SetPoint(usize, Reference),
 
+    ReduceRange(Reference, Reference, Reference, Reference),
     Reduce(Reference, Reference),
     Into(Reference, Reference),
     ForEach(Reference, Reference),    
+    ForEachRange(Reference, Reference, Reference, Reference),    
 }
 
 
@@ -307,8 +309,10 @@ impl Instr {
             "PONT" => Ok(Instr::Point(parse_usize(chars)?)),
             "STPT" => Ok(Instr::SetPoint(parse_usize(chars)?, Reference::from_str(chars)?)),
             "RDCE" => Ok(Instr::Reduce(Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "RDRG" => Ok(Instr::ReduceRange(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "INTO" => Ok(Instr::Into(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "FREH" => Ok(Instr::ForEach(Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "FRRG" => Ok(Instr::ForEachRange(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             _ => Err(InstrError::new("couldn't parse instr"))
         }
 
@@ -370,8 +374,10 @@ impl ToString for Instr {
             Instr::Point(a) => format!("PONT {}", a.to_string()),
             Instr::SetPoint(a,  b) => format!("STPT {} {}", a.to_string(), b.to_string()),
             Instr::Reduce(a, b) => format!("RDCE {} {}", a.to_string(), b.to_string()),
+            Instr::ReduceRange(a, b, c, d) => format!("RDRG {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
             Instr::Into(a, b) => format!("INTO {} {}", a.to_string(), b.to_string()),
             Instr::ForEach(a, b) => format!("FREH {} {}", a.to_string(), b.to_string()),
+            Instr::ForEachRange(a, b, c, d) => format!("FRRG {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
         }
     }
 }
@@ -990,6 +996,7 @@ impl VM {
                                         }
                                     }
 
+                                    self.stack.push(Data::Reference(Reference::Literal(acc)));
                                     Ok(None)
                                 }
                             },
@@ -1020,6 +1027,7 @@ impl VM {
                                         acc += num;
                                     }
 
+                                    self.stack.push(Data::Reference(Reference::Literal(acc)));
                                     Ok(None)
                                 }
                             },
@@ -1027,6 +1035,42 @@ impl VM {
                                 Err(InstrError::new("second ref must be a tuple or matrix"))
                             }
                         }
+                    } else {
+                        Err(InstrError::new("first ref must be a executable"))
+                    }
+                },
+                Instr::ReduceRange(a, b, c, d) => {
+                    if let Reference::Executable(argc, instr_pointer) = a {
+                        let b = b.to_number(0, 0, self);
+                        let c = c.to_number(0, 0, self);
+                        let d = d.to_number(0, 0, self);
+
+                        if b.is_none() || c.is_none() || d.is_none() || d.is_none()  {
+                            return Err(InstrError::new("range references must eval to numbers"));
+                        }
+
+                        let b = b.unwrap().floor() as usize;
+                        let c = c.unwrap().floor() as usize;
+                        let d = d.unwrap().floor() as usize;
+
+                        let mut acc = 0.0;
+                        for x in (b..c).step_by(d) {
+                            let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                vm.stack.push(Data::Reference(Reference::Literal(acc)));
+                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                            });
+
+                            let num = match reference.to_number(0, 0, self) {
+                                Some(num) => num,
+                                None => return Err(InstrError::new("func return value must be a number")),
+                            };
+
+                            acc += num;
+                        }
+
+                        self.stack.push(Data::Reference(Reference::Literal(acc)));
+                        Ok(None)
                     } else {
                         Err(InstrError::new("first ref must be a executable"))
                     }
@@ -1062,6 +1106,7 @@ impl VM {
                                         }
                                     }
 
+                                    self.stack.push(Data::Reference(Reference::Matrix(id)));
                                     Ok(None)
                                 }
                             },
@@ -1084,6 +1129,7 @@ impl VM {
                                         *self.tuples.get_mut(&id).unwrap().get_mut(x).unwrap() = reference;
                                     }
 
+                                    self.stack.push(Data::Reference(Reference::Tuple(id)));
                                     Ok(None)
                                 }
                             },
@@ -1118,6 +1164,7 @@ impl VM {
                                         }
                                     }
 
+                                    self.stack.push(Data::Reference(Reference::Matrix(id)));
                                     Ok(None)
                                 }
                             },
@@ -1139,6 +1186,7 @@ impl VM {
                                         });
                                     }
 
+                                    self.stack.push(Data::Reference(Reference::Tuple(id)));
                                     Ok(None)
                                 }
                             },
@@ -1146,6 +1194,35 @@ impl VM {
                                 Err(InstrError::new("second ref must be a tuple or matrix"))
                             }
                         }
+                    } else {
+                        Err(InstrError::new("first ref must be a executable"))
+                    }
+                },
+                Instr::ForEachRange(a, b, c, d) => {
+                    if let Reference::Executable(argc, instr_pointer) = a {
+                        let mut last_reference = Reference::None;
+                        
+                        let b = b.to_number(0, 0, self);
+                        let c = c.to_number(0, 0, self);
+                        let d = d.to_number(0, 0, self);
+
+                        if b.is_none() || c.is_none() || d.is_none() || d.is_none()  {
+                            return Err(InstrError::new("range references must eval to numbers"));
+                        }
+
+                        let b = b.unwrap().floor() as usize;
+                        let c = c.unwrap().floor() as usize;
+                        let d = d.unwrap().floor() as usize;
+
+                        for x in (b..c).step_by(d) {
+                            last_reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
+                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                                vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
+                            });
+                        }
+
+                        self.stack.push(Data::Reference(last_reference));
+                        Ok(None)
                     } else {
                         Err(InstrError::new("first ref must be a executable"))
                     }
