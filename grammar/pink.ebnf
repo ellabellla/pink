@@ -7,6 +7,7 @@ xor = "xor";
 
 peek = "@@";
 pop = "@";
+matrix = "#";
 
 if = "?";
 into = "<-";
@@ -20,7 +21,6 @@ mul_set = "*:";
 div_set = "/:";
 set = ":";
 setters = set | add_set | sub_set | mul_set | div_set;
-
 
 not = "!";
 add = "+";
@@ -53,23 +53,25 @@ expression_4th = expression_3rd (operator_4th expression_3rd)*;
 expression_3rd = expression_2nd (operator_3rd expression_2nd)*;
 expression_2nd = expression_1st (operator_2nd expression_1st)*;
 expression_1st = expression_value (operator_1st expression_value)*;
-expression_value = value | '(' expression ')' ;
+expression_value = value;
 
-definition = identifier setters (expression | meta | tuple);
-strict_definition = identifier set (expression | meta | tuple);
+definition = identifier setters (expression | tuple);
+strict_definition = identifier set (expression | tuple);
 
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
 exec = expression_list | (tuple exec (expression_list | identifier));
-into = (meta | value_tuple | reference) into exec;
-for_each = (meta | value_tuple | reference) into_exec exec;
-reduce = (meta | value_tuple | reference) reduce_exec exec;
+into = (tuple_constructor | matrix| value_tuple | reference) into exec;
+for_each = (matrix| value_tuple | reference | range) into_exec exec;
+reduce = (matrix| value_tuple | reference | range) reduce_exec exec;
 
 tuple = '(' ((strict_definition | expression) (';' (strict_definition | expression))*)? ')';
 value_tuple = '(' (expression (';' expression)*)? ')';
 
-indexed_value = reference meta;
-meta = '{' expression (';' expression)? '}'
+indexed_value = (matrix | reference) index;
+index = '(' expression (',' expression)? ')';
+range = '{' expression ';' expression (';' expression)? '}';
+tuple_constructor = '(' '{' expression '}' ')';
 
 statement = (definition | expression) (',' | ';');
 
