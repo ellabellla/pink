@@ -540,7 +540,7 @@ fn parse_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn  parse_into(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let data = or!(parser.tokenizer, "expected a tuple or reference", fallback, parse_value_tuple, parse_reference)?;
+    let data = or!(parser.tokenizer, "expected a tuple or reference", fallback, parse_tuple_constructor, parse_matrix, parse_value_tuple, parse_reference)?;
     is_next!(parser.tokenizer, fallback, Token::Into)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
@@ -549,7 +549,7 @@ fn  parse_into(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn  parse_for_each(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_value_tuple, parse_reference, parse_range)?;
+    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_matrix, parse_value_tuple, parse_reference, parse_range)?;
     is_next!(parser.tokenizer, fallback, Token::ForEach)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
@@ -558,7 +558,7 @@ fn  parse_for_each(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn  parse_reduce(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_value_tuple, parse_reference, parse_range)?;
+    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_matrix, parse_value_tuple, parse_reference, parse_range)?;
     is_next!(parser.tokenizer, fallback, Token::Reduce)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
@@ -633,10 +633,18 @@ fn  parse_value_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn parse_indexed_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let reference = get_or_fallback!(parser.tokenizer, fallback, parse_reference)?;
+    let reference = or!(parser.tokenizer, "expected a matrix or reference", fallback, parse_matrix parse_reference)?;
     let meta = get_or_fallback!(parser.tokenizer, fallback, parse_index)?;
 
     Ok(Box::new(ASTNode::new(ASTNodeType::Indexed,  vec![reference, meta], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+}
+
+fn parse_matrix(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
+    let fallback = parser.tokenizer.pos();
+
+    is_next!(parser.tokenizer, fallback, Token::Matrix)?;
+
+    Ok(Box::new(ASTNode::new(ASTNodeType::Matrix, vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
 fn parse_range(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -685,6 +693,22 @@ fn parse_index(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     Ok(Box::new(ASTNode::new(ast_type, children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
 }
 
+fn parse_tuple_constructor(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
+    let fallback = parser.tokenizer.pos();
+    is_next!(parser.tokenizer, fallback, Token::OpenParentheses)?;
+    is_next!(parser.tokenizer, fallback, Token::OpenBrace)?;
+    
+    let mut children = vec![];
+    
+    children.push(parse_expression(parser)?);
+
+    is_next!(parser.tokenizer, fallback, Token::CloseBrace)?;
+    is_next!(parser.tokenizer, fallback, Token::CloseParentheses)?;
+
+    Ok(Box::new(ASTNode::new(ASTNodeType::TupleConstructor, children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
+
+}
+
 fn parse_statement(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
     let statement_type;
@@ -715,14 +739,6 @@ mod tests {
         assert_parse_eq!(
             r"2+2*3-1/2;",
             "(((((Number(2.0))((Number(2.0))(Number(3.0))Operator(Multiply))Operator(Add))((Number(1.0))(Number(2.0))Operator(Divide))Operator(Subtract))Statement(Throw))Root)"
-        );
-    }
-
-    #[test]
-    fn test_arithmetic_bracketed() {
-        assert_parse_eq!(
-            r"(2+2)*6;", 
-            "(((((Number(2.0))(Number(2.0))Operator(Add))(Number(6.0))Operator(Multiply))Statement(Throw))Root)"
         );
     }
 
@@ -812,7 +828,7 @@ mod tests {
         assert_parse_eq!("v:();", "((((Reference(Identifier(\"v\")))(Tuple(0))Set(Set))Statement(Throw))Root)");
         assert_parse_eq!("v:(1;2);", "((((Reference(Identifier(\"v\")))((Number(1.0))(Throw)(Number(2.0))Tuple(2))Set(Set))Statement(Throw))Root)");
         assert_parse_eq!("v:(var;2);", "((((Reference(Identifier(\"v\")))((Reference(Identifier(\"var\")))(Throw)(Number(2.0))Tuple(2))Set(Set))Statement(Throw))Root)");
-        assert_parse_eq!("v:(1+2);", "((((Reference(Identifier(\"v\")))((Number(1.0))(Number(2.0))Operator(Add))Set(Set))Statement(Throw))Root)");
+        assert_parse_eq!("v:(1+2);", "((((Reference(Identifier(\"v\")))(((Number(1.0))(Number(2.0))Operator(Add))Tuple(1))Set(Set))Statement(Throw))Root)");
         assert_parse_eq!("v:(var:10);", "((((Reference(Identifier(\"v\")))(((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple(1))Set(Set))Statement(Throw))Root)");
     }
 
@@ -820,5 +836,17 @@ mod tests {
     fn test_definition() {
         assert_parse_eq!("var:10*10;", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(10.0))Operator(Multiply))Set(Set))Statement(Throw))Root)");
         assert_parse_eq!("var+:10*10;", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(10.0))Operator(Multiply))Set(AddAndSet))Statement(Throw))Root)");
+    }
+
+    #[test]
+    fn test_matrix() {
+        assert_parse_eq!("# <- [1];", "((((Matrix)((Number(1.0))ExpressionList(1))Into)Statement(Throw))Root)");
+        assert_parse_eq!("#(10;10);", "((((Matrix)((Number(10.0))(Number(10.0))Index2D)Indexed)Statement(Throw))Root)");
+    }
+
+    #[test]
+    fn text_tuple_constructor() {
+        assert_parse_eq!("({1}) <- [1];", "(((((Number(1.0))TupleConstructor)((Number(1.0))ExpressionList(1))Into)Statement(Throw))Root)");
+
     }
 }
