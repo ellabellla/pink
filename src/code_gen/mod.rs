@@ -135,14 +135,14 @@ struct Function {
     args: usize,
     code: Vec<Line>,
     funcs: HashMap<usize, Function>,
+    heap: Vec<usize>,
     tuples: Vec<usize>,
-    matrices: Vec<usize>,
     ret: Reference,
 }
 
 impl Function {
     pub fn new(args:usize, id: usize) -> Function {
-        Function { id, args, code: vec![], funcs: HashMap::new(), tuples: vec![], matrices: vec![], ret: Reference::None }
+        Function { id, args, code: vec![], funcs: HashMap::new(), heap: vec![], tuples: vec![], ret: Reference::None }
     }
 }
 
@@ -267,11 +267,11 @@ impl Code {
             }
         }
 
-        for key in func.funcs.keys()  {
-            let func = func.funcs.get(key).expect("should already be defined");
-            for tuple in &func.tuples {
-                out.push(Instr::RemoveTuple(*tuple));
-            }
+        for tuple in &func.tuples {
+            out.push(Instr::RemoveTuple(*tuple));
+        }
+        for heap in &func.heap {
+            out.push(Instr::Free(*heap));
         }
 
         out.push(Instr::PopFrame(func.ret));
@@ -340,6 +340,9 @@ fn generate_function(is_eval: bool, func: &mut Function, naming: &mut Naming, no
 }
 
 fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
+    if node.children.len() < 2 {
+        return Err(GenerationError::new("not an exec"));
+    }
     let is_ref = get_annotation!(node.children[1], "", Annotation::GlobalId(_id))
         .or_else(|_| get_annotation!(node.children[1], "", Annotation::Id(_id))).is_ok();
 
@@ -400,19 +403,17 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
 }
 
 fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
-    let mut inner_func = Function::new(2, naming.new_func_id());
-    let exec_id = generate_exec(false, &mut inner_func, naming, &node.children[1])
-    .or_else(|_| {
-        let mut inner_func = Function::new(0,naming.new_func_id());
-        let reference = generate_expression_list(&mut inner_func, naming, node)?;
-        inner_func.ret = reference;
-        let id = inner_func.id;
-        func.funcs.insert(inner_func.id, inner_func);
-        Ok(id)
-    })?;
     let lhs = match &node.children[0].node_type {
         ASTNodeType::Range =>  Reference::None,
         ASTNodeType::RangeComplex => Reference::None,
+        ASTNodeType::TupleConstructor => {
+            let reference = generate_expression(func, naming, &node.children[0].children[0])?;
+            let tuple_id = naming.new_tuple_id();
+            func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
+            func.tuples.push(tuple_id);
+            Reference::Tuple(tuple_id)
+        }
+        ASTNodeType::Matrix => Reference::Matrix,
         ASTNodeType::Tuple(_) => {
             if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[0])? {
                 Reference::Tuple(id)
@@ -423,48 +424,115 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
         ASTNodeType::Reference(_) => {
             match generate_reference(func, naming, node)? {
                 Reference::Tuple(id) => Reference::Tuple(id),
-                Reference::Matrix(id) => Reference::Matrix(id),
+                Reference::Matrix => Reference::Matrix,
                 _=> return Err(GenerationError::new("expected reference to be a tuple or matrix")),
             }
         }
         _ => return Err(GenerationError::new("invalid lhs for extended exec")),
     };
 
-    if lhs != Reference::None {
-        match node.node_type {
-            ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::Reduce(Reference::None, lhs), exec_id)),
-            ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEach(Reference::None, lhs), exec_id)),
-            ASTNodeType::Into => inner_func.code.push(Line::ExecRef(Instr::Into(Reference::None, lhs), exec_id)),
-            _ => return Err(GenerationError::new("expected extended func"))
+    if is_eval {
+        let exec_id = generate_exec(false, func, naming, &node.children[1])
+        .or_else(|_| {
+            let mut inner_inner_func = Function::new(0,naming.new_func_id());
+            let reference = generate_expression_list(&mut inner_inner_func, naming, &node.children[1])?;
+            inner_inner_func.ret = reference;
+            let id = inner_inner_func.id;
+            func.funcs.insert(inner_inner_func.id, inner_inner_func);
+            Ok(id)
+        })?;
+    
+        if lhs != Reference::None {
+            match node.node_type {
+                ASTNodeType::Reduce => func.code.push(Line::ExecRef(Instr::Reduce(Reference::None, lhs), exec_id)),
+                ASTNodeType::ForEach => func.code.push(Line::ExecRef(Instr::ForEach(Reference::None, lhs), exec_id)),
+                ASTNodeType::Into => func.code.push(Line::ExecRef(Instr::Into(Reference::None, lhs), exec_id)),
+                _ => return Err(GenerationError::new("expected extended func"))
+            }
+        } else {
+            let (start, end, step) = match &node.children[0].node_type {
+                ASTNodeType::Range => {
+                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
+                    let end = generate_expression(func, naming, &node.children[0].children[1])?;
+                    (start, end, Reference::Literal(1.0))
+                },
+                ASTNodeType::RangeComplex => {
+                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
+                    let end = generate_expression(func, naming, &node.children[0].children[1])?;
+                    let step = generate_expression(func, naming, &node.children[0].children[2])?;
+                    (start, end, step)
+                },
+                _ => return Err(GenerationError::new("invalid lhs for extended exec")),
+            };
+    
+            match node.node_type {
+                ASTNodeType::Reduce => func.code.push(Line::ExecRef(Instr::ReduceRange(Reference::None, start, end, step), exec_id)),
+                ASTNodeType::ForEach => func.code.push(Line::ExecRef(Instr::ForEachRange(Reference::None, start, end, step), exec_id)),
+                _ => return Err(GenerationError::new("expected extended func"))
+            }
         }
+        Ok(func.id)
     } else {
-        let (start, end, step) = match &node.children[0].node_type {
-            ASTNodeType::Range => {
-                let start = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
-                let end = generate_expression(&mut inner_func, naming, &node.children[0].children[1])?;
-                (start, end, Reference::Literal(1.0))
-            },
-            ASTNodeType::RangeComplex => {
-                let start = generate_expression(&mut inner_func, naming, &node.children[0].children[0])?;
-                let end = generate_expression(&mut inner_func, naming, &node.children[0].children[1])?;
-                let step = generate_expression(&mut inner_func, naming, &node.children[0].children[2])?;
-                (start, end, step)
-            },
-            _ => return Err(GenerationError::new("invalid lhs for extended exec")),
-        };
+        let mut inner_func = Function::new(0, naming.new_func_id());
 
-        match node.node_type {
-            ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::ReduceRange(Reference::None, start, end, step), exec_id)),
-            ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEachRange(Reference::None, start, end, step), exec_id)),
-            _ => return Err(GenerationError::new("expected extended func"))
+        let exec_id = generate_exec(false, &mut inner_func, naming, &node.children[1])
+        .or_else(|_| {
+            let mut inner_inner_func = Function::new(0,naming.new_func_id());
+            let reference = generate_expression_list(&mut inner_inner_func, naming, &node.children[1])?;
+            inner_inner_func.ret = reference;
+            let id = inner_inner_func.id;
+            inner_func.funcs.insert(inner_inner_func.id, inner_inner_func);
+            Ok(id)
+        })?;
+    
+        if lhs != Reference::None {
+            match node.node_type {
+                ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(Instr::Reduce(Reference::None, lhs), exec_id)),
+                ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(Instr::ForEach(Reference::None, lhs), exec_id)),
+                ASTNodeType::Into => inner_func.code.push(Line::ExecRef(Instr::Into(Reference::None, lhs), exec_id)),
+                _ => return Err(GenerationError::new("expected extended func"))
+            }
+        } else {
+            let (start, end, step) = match &node.children[0].node_type {
+                ASTNodeType::Range => {
+                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
+                    let end = generate_expression(func, naming, &node.children[0].children[1])?;
+                    (start, end, Reference::Literal(1.0))
+                },
+                ASTNodeType::RangeComplex => {
+                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
+                    let end = generate_expression(func, naming, &node.children[0].children[1])?;
+                    let step = generate_expression(func, naming, &node.children[0].children[2])?;
+                    (start, end, step)
+                },
+                _ => return Err(GenerationError::new("invalid lhs for extended exec")),
+            };
+
+            let step_id = naming.new_heap_id();
+            func.code.push(Line::Instr(Instr::Alloc(step_id, step)));
+            func.heap.push(step_id);
+            let end_id = naming.new_heap_id();
+            func.code.push(Line::Instr(Instr::Alloc(end_id, end)));
+            func.heap.push(end_id);
+            let start_id = naming.new_heap_id();
+            func.code.push(Line::Instr(Instr::Alloc(start_id, start)));
+            func.heap.push(start_id);
+    
+            match node.node_type {
+                ASTNodeType::Reduce => inner_func.code.push(Line::ExecRef(
+                    Instr::ReduceRange(Reference::None, Reference::Heap(start_id), Reference::Heap(end_id), Reference::Heap(step_id)),
+                exec_id)),
+                ASTNodeType::ForEach => inner_func.code.push(Line::ExecRef(
+                    Instr::ForEachRange(Reference::None, Reference::Heap(start_id), Reference::Heap(end_id), Reference::Heap(step_id)),
+                exec_id)),
+                _ => return Err(GenerationError::new("expected extended func"))
+            }
         }
+        func.code.push(Line::Call(inner_func.id));
+        let id = inner_func.id;
+        func.funcs.insert(inner_func.id, inner_func);
+        Ok(id)
     }
-
-    func.code.push(Line::Call(inner_func.id));
-
-    let id = inner_func.id;
-    func.funcs.insert(inner_func.id, inner_func);
-    Ok(id)
 }
 
 fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
@@ -576,17 +644,27 @@ fn generate_expression_list(func: &mut Function, naming: &mut Naming, node: &Box
 }
 
 fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    let reference = generate_reference(func, naming, &node.children[0])?;
+    match node.children[0].node_type {
+        ASTNodeType::Matrix => {
+            if let ASTNodeType::Index2D = &node.children[1].node_type {
+                let x = generate_expression(func, naming, &node.children[1].children[0])?;
+                let y = generate_expression(func, naming, &node.children[1].children[1])?;
+                func.code.push(Line::Instr(Instr::GetMatrix(x, y)));
+            } else {
+                return Err(GenerationError::new("Expected meta in indexed value"))
+            }
+        },
+        ASTNodeType::Reference(_) => {
+            let reference = generate_reference(func, naming, &node.children[0])?;
 
-    if let ASTNodeType::Index = &node.children[1].node_type {
-        let x = generate_expression(func, naming, &node.children[1].children[0])?;
-        func.code.push(Line::Instr(Instr::GetTupleReference(reference, x)))
-    } else if let ASTNodeType::Index2D = &node.children[1].node_type {
-        let x = generate_expression(func, naming, &node.children[1].children[0])?;
-        let y = generate_expression(func, naming, &node.children[1].children[1])?;
-        func.code.push(Line::Instr(Instr::GetMatrix(index, x, y)))
-    } else {
-        return Err(GenerationError::new("Expected meta in indexed value"))
+            if let ASTNodeType::Index = &node.children[1].node_type {
+                let x = generate_expression(func, naming, &node.children[1].children[0])?;
+                func.code.push(Line::Instr(Instr::GetTupleReference(reference, x)));
+            } else {
+                return Err(GenerationError::new("Expected index in indexed value"))
+            }
+        },
+        _=> return Err(GenerationError::new("Expected index in indexed value"))
     }
 
     Ok(Reference::Stack)
@@ -605,6 +683,7 @@ fn generate_reference(func: &mut Function, naming: &mut Naming, node: &Box<ASTNo
             Ok(Reference::Stack)
         },
         Token::Pop => Ok(Reference::Stack),
+        Token::Matrix => Ok(Reference::Matrix),
         Token::Identifier(_) => {
             if let Ok(pull_through_id) = get_annotation!(node, "", Annotation::PullThrough(_id)) {
                 Ok(Reference::Argument(*pull_through_id))
@@ -852,8 +931,8 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            var:(10);
-            var(0);
+            {100;200} <* [10];
+            ({100}) <- [10];
         "));
 
 
