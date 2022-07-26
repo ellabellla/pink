@@ -129,6 +129,7 @@ impl VariableType {
             ASTNodeType::Into => Ok(VariableType::Executable),
             ASTNodeType::ExpressionList(_) => Ok(VariableType::ExpressionList),
             ASTNodeType::Tuple(_) => Ok(VariableType::Tuple),
+            ASTNodeType::Matrix => Ok(VariableType::Matrix),
             ASTNodeType::Indexed => Ok(VariableType::Number),
             ASTNodeType::Range => Ok(VariableType::Tuple),
             ASTNodeType::RangeComplex => Ok(VariableType::Tuple),
@@ -251,6 +252,11 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             if !allow_creation {
                 return create_semantic_error!(node, "variable creation is not allowed in this scope") 
             }
+
+            if !matches!(set_type, Token::Set) {
+                return create_semantic_error!(node, "variable must be defined before it is modified") 
+            }
+
             init = true;
             if let Some(scope) = data.stack.last_mut() {
                 let id = scope.new_id();
@@ -262,7 +268,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         }
     }
 
-    match node.children[1].node_type {
+    let value = match node.children[1].node_type {
         ASTNodeType::ExpressionList(_) => validate_exec( false, data, &mut node.children[1]),
         ASTNodeType::Exec => validate_exec( false, data, &mut node.children[1]),
         ASTNodeType::Reduce => validate_extended_exec(false, data, &mut node.children[1]),
@@ -270,19 +276,48 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         ASTNodeType::Into => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[1]),
         _ => validate_expression(data, &mut node.children[1], pull_through),
-    }?;
+    }.or_else(|_| {
+        if !matches!(set_type, Token::Set) {
+            if !matches!(var_type, VariableType::Number) {
+                create_semantic_error!(node, "only numbers may be set with an operator")
+            } else {
+                Ok(())
+            }
+        } else {
+            Ok(())
+        }
+    });
+
 
     let reference = is!(&node.children[0].node_type, "expected identifier in definition", ASTNodeType::Reference(reference))?;
-    let ident = is!(reference, "expected identifier in definition", Token::Identifier(ident))?;    
+    let ident = is!(reference, "expected identifier in definition", Token::Identifier(ident))?;
 
-    if !init {
-        match var_type {
-            VariableType::Number => (),
-            _ => return create_semantic_error!(node, "non number variables cannot be redefined or modified"),
+    if let Err(err) = value {
+        if init {
+            if data.globals.variables.get(ident).is_some() {
+                data.globals.variables.remove(ident);
+            } else if let Some(scope) = data.stack.last_mut() {
+                if scope.variables.get(ident).is_some() {
+                    scope.variables.remove(ident);
+                }
+            }
         }
-    }
 
+        return Err(err);
+    }
+    
     if let Some(variable) = data.globals.variables.get(ident) {
+        if !init {
+            if match var_type {
+                VariableType::Number => !matches!(variable.var_type, VariableType::Number),
+                VariableType::Executable => !matches!(variable.var_type, VariableType::Executable),
+                VariableType::ExpressionList => !matches!(variable.var_type, VariableType::ExpressionList),
+                VariableType::Tuple => !matches!(variable.var_type, VariableType::Tuple),
+                VariableType::Matrix => !matches!(variable.var_type, VariableType::Matrix),
+            } {
+                return create_semantic_error!(node, "definition cannot change type");
+            }
+        }
         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
         if matches!(variable.var_type, VariableType::Executable) {
             if let Some(argc) = variable.argc {
@@ -350,6 +385,9 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
 }
 
 fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
+    if node.children.len() < 2 {
+        return create_semantic_error!(node, "expected exec")
+    }
     data.stack.push(Scope::new());
     let res = {
         let is_ref = is!(&node.children[1].node_type, "expected identifier", ASTNodeType::Reference(reference)).is_ok();
@@ -403,9 +441,8 @@ fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>
             } else {
                 validate_expression_list(data, &mut node.children[1])
             }
-
         })
-    };    
+    };
     let scope = data.stack.pop().unwrap();
     if res.is_ok() {
         node.annotations.push(Annotation::Scope(scope.variables.len()));
@@ -414,10 +451,18 @@ fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>
 }
 
 fn validate_extended_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
-    validate_exec(is_eval, data, &mut node.children[1]).or_else(|_| validate_expression_list(data, &mut node.children[1]))?;
+    validate_exec(is_eval, data, &mut node.children[1]).or_else(|_| {
+        data.stack.push(Scope::new());
+        let res = validate_expression_list(data, &mut node.children[1]);
+        let scope = data.stack.pop().unwrap();
+        node.children[1].annotations.push(Annotation::Scope(scope.variables.len()));
+        res
+    })?;
     match &node.children[0].node_type {
+        ASTNodeType::TupleConstructor => Ok(()),
         ASTNodeType::Range => Ok(()),
         ASTNodeType::RangeComplex => Ok(()),
+        ASTNodeType::Matrix => Ok(()),
         ASTNodeType::Tuple(_) => validate_tuple(data, node),
         ASTNodeType::Reference(Token::Identifier(ident)) => {
             if let Some(variable) = data.globals.variables.get(ident) {
@@ -529,33 +574,37 @@ fn validate_argc(is_ref: bool, data: &mut SemanticData, node: &mut Box<ASTNode>)
 }
 
 fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
-    let reference = is!(&node.children[0].node_type, "expected identifier", ASTNodeType::Reference(reference))?;
-    let ident = is!(reference, "expected identifier", Token::Identifier(ident))?;
-    let var_type = if let Some(variable) = data.globals.variables.get(ident) {
-        node.children[0].annotations.push(Annotation::GlobalId(variable.id));
-        variable.var_type
-    } else if let Some(scope) = data.stack.last() {
-        if let Some(variable) = scope.variables.get(ident) {
-            node.children[0].annotations.push(Annotation::Id(variable.id));
-            variable.var_type
-        } else {
-            create_semantic_error!(node, "identifier must be defined before it is used")?
-        }
-    } else {
-        create_semantic_error!(node, "identifier must be defined before it is used")?
-    }.clone();
-    match node.children[1].node_type {
-        ASTNodeType::Index => {
-            validate_expression(data, &mut node.children[1].children[0], false)?;
-            is!(var_type, "variable must be a tuple", VariableType::Tuple)?
-        }, 
-        ASTNodeType::Index2D => {
+    if matches!(&node.children[0].node_type, ASTNodeType::Matrix) {
+        if matches!(node.children[1].node_type, ASTNodeType::Index2D) {
             validate_expression(data, &mut node.children[1].children[0], false)?;
             validate_expression(data, &mut node.children[1].children[1], false)?;
-            is!(var_type, "variable must be a matrix", VariableType::Matrix)?
-        },
-        _ => (),
+        } else {
+            create_semantic_error!(node, "matrix must be indexed by a 2d index")?;
+        }
+    } else {
+        let reference = is!(&node.children[0].node_type, "expected identifier", ASTNodeType::Reference(reference))?;
+        let ident = is!(reference, "expected identifier", Token::Identifier(ident))?;
+        let var_type = if let Some(variable) = data.globals.variables.get(ident) {
+            node.children[0].annotations.push(Annotation::GlobalId(variable.id));
+            variable.var_type
+        } else if let Some(scope) = data.stack.last() {
+            if let Some(variable) = scope.variables.get(ident) {
+                node.children[0].annotations.push(Annotation::Id(variable.id));
+                variable.var_type
+            } else {
+                create_semantic_error!(node, "identifier must be defined before it is used")?
+            }
+        } else {
+            create_semantic_error!(node, "identifier must be defined before it is used")?
+        }.clone();
+        if matches!(node.children[1].node_type, ASTNodeType::Index) {
+            validate_expression(data, &mut node.children[1].children[0], false)?;
+            is!(var_type, "variable must be a tuple", VariableType::Tuple)?
+        } else {
+            create_semantic_error!(node, "matrix must be indexed by a 1d index")?;
+        }
     }
+    
     Ok(())
 }
 
@@ -643,6 +692,7 @@ mod tests {
             var3: (1; x:2; y:1) -> [(y) -> [1]];
             2* 2 ? (2; 2);
             var0(1);
+
         "));
 
         assert_eq!(validate(&mut tree), Ok(()));
