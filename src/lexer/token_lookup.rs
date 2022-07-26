@@ -10,6 +10,7 @@ token_lookup!(
     
     ("@@", Peek),
     ("@", Pop),
+    ("#", Matrix),
 
     ("?", If),
     ("<-", Into),
