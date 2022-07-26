@@ -583,10 +583,14 @@ mod instr_ops {
     }
 
     pub fn create_tuple(a: usize, b:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
-        if let Some(_) = vm.tuples.insert(a, vec![Reference::None; b.floor() as usize]) {
+        if vm.tuples.contains_key(&a) {
             Ok(None)
         } else {
-            Err(InstrError::new("couldn't create tuple"))
+            if let Some(_) = vm.tuples.insert(a, vec![Reference::None; b.floor() as usize]) {
+                Ok(None)
+            } else {
+                Err(InstrError::new("couldn't create tuple"))
+            }
         }
     }
     pub fn remove_tuple(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -912,10 +916,14 @@ impl VM {
                     }
                 },
                 Instr::Alloc(a, b) => {
-                    if let Some(_) = self.heap.insert(a, b) {
+                    if self.heap.contains_key(&a) {
                         Ok(None)
                     } else {
-                        Err(InstrError::new("couldn't add to heap"))
+                        if let Some(_) = self.heap.insert(a, b) {
+                            Ok(None)
+                        } else {
+                            Err(InstrError::new("couldn't add to heap"))
+                        }
                     }
                 },
                 Instr::Free(a) => self.eval_unary_op_fixed(a, &instr_ops::free),
