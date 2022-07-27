@@ -164,9 +164,32 @@ impl Matrix {
         Matrix{memory: vec![0.0; width*height], width, height}
     }
 
+    fn float_to_scalar(num: f64) -> f64 {
+        const MIN:f64 = 0.0;
+        const MAX:f64 = 1.0;
+
+        let mut num = num;
+        if num < MIN {
+            num = MAX - (MIN - num) % (MAX - MIN);
+        }
+        else if num > MAX {
+            num = MIN + (num - MIN) % (MAX - MIN);
+        }
+
+        num
+    }
+
     #[wasm_bindgen(getter)]
-    pub fn memory(&self) -> Vec<f64> {
-        self.memory.clone()
+    pub fn memory(&self) -> Vec<u8> {
+        let mut mem_out = Vec::with_capacity(self.memory.len()*4);
+        for i in 0..self.memory.len() {
+            mem_out.push((255.0 * Matrix::float_to_scalar(self.memory[i])) as u8);
+            mem_out.push((192.0 * Matrix::float_to_scalar(self.memory[i])) as u8);
+            mem_out.push((203.0 * Matrix::float_to_scalar(self.memory[i])) as u8);
+            mem_out.push(255);
+        }
+
+        mem_out
     }
 
     pub fn get(&self, x:usize, y:usize) -> Option<f64> {
