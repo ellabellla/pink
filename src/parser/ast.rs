@@ -1,17 +1,17 @@
-use std::vec;
+use std::{vec};
 
-use crate::{lexer::{Token, Tokenizer}};
+use crate::{lexer::{Token, Tokenizer}, parser::{ParseError}};
 
 use super::parse;
 
-#[allow(dead_code)]
+
 #[derive(Debug)]
 pub enum StatementType {
     Push,
     Throw,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug)]
 pub enum ASTNodeType {
     Operator(Token),
@@ -46,12 +46,11 @@ pub enum ASTNodeType {
     Root,
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug)]
 pub enum Annotation {
     Id(usize),
     GlobalId(usize),
-    Init,
     Argc(usize),
     Executable,
     ExpressionList,
@@ -78,18 +77,19 @@ impl ASTNode {
     }
 }
 
-#[allow(dead_code)]
+
 
 pub struct AbstractSyntaxTree {
     pub root: Box<ASTNode>
 }
 
-#[allow(dead_code)]
+
 impl AbstractSyntaxTree {
-    pub fn new(tokenizer: &mut Tokenizer) -> AbstractSyntaxTree {
+    pub fn new(tokenizer: &mut Tokenizer) -> Result<AbstractSyntaxTree, ParseError> {
         parse(tokenizer)
     }
 
+    #[allow(dead_code)]
     pub fn to_string(&self, show_annotations: bool) -> String {
         let mut output = vec![];
         AbstractSyntaxTree::to_string_helper(&self.root, show_annotations, &mut output);
@@ -123,6 +123,7 @@ impl AbstractSyntaxTree {
         output.push(')');
     }
 
+    #[allow(dead_code)]
     pub fn to_pretty_string(&self, show_annotations: bool) -> String {
         let mut output = vec![];
         AbstractSyntaxTree::to_pretty_helper(&self.root, show_annotations, &mut output, 0);

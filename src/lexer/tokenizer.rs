@@ -31,12 +31,13 @@ impl Iterator for Tokenizer {
     }
 }
 
-#[allow(dead_code)]
+
 impl<'a> Tokenizer {
     pub fn new(input: &str) -> Tokenizer {
         Tokenizer{stream: CharStream::new(input), history: queue![], line: 0, line_index: 0}
     }
 
+    #[allow(dead_code)]
     pub fn back(&mut self) {
         let (pos, line, line_index) = self.history.remove().unwrap_or_else(|_| (0,0,0));
 
@@ -56,6 +57,7 @@ impl<'a> Tokenizer {
         self.line_index = line_index;
     }
 
+    #[allow(dead_code)]
     pub fn newline_next(&mut self) -> bool {
         let start_pos = self.stream.pos();
         let mut found = false;

@@ -3,7 +3,7 @@ pub struct CharStream {
     index: usize
 }
 
-#[allow(dead_code)]
+
 impl CharStream {
     pub fn new(input: &str) -> CharStream {
         CharStream { input: input.chars().collect(), index: 0 }
@@ -17,6 +17,7 @@ impl CharStream {
         }
     }
 
+    #[allow(dead_code)]
     pub fn prev(&mut self) -> Option<char> {
         if self.index <= 0 {
             None

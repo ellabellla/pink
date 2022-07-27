@@ -91,7 +91,7 @@ pub struct SemanticError {
     msg: String
 }
 
-#[allow(dead_code)]
+
 impl SemanticError {
     pub fn new(msg: &str) -> SemanticError {
         SemanticError { msg: msg.to_string() }
@@ -108,7 +108,7 @@ impl fmt::Display for SemanticError {
     }
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Clone, Copy)]
 pub enum VariableType {
     Number,
@@ -118,7 +118,7 @@ pub enum VariableType {
     Matrix,
 }
 
-#[allow(dead_code)]
+
 impl VariableType {
     pub fn node_to_type(data: &SemanticData, node: &Box<ASTNode>) -> Result<VariableType, SemanticError> {
         match &node.node_type {
@@ -154,7 +154,7 @@ impl VariableType {
     }
 }
 
-#[allow(dead_code)]
+
 #[derive(Debug, Clone)]
 pub struct Variable {
     pub id: usize,
@@ -163,22 +163,19 @@ pub struct Variable {
 }
 
 impl Variable {
-    pub fn new(id: usize, var_type: VariableType) -> Variable {
-        Variable { id, var_type, argc: None }
-    }
-    pub fn new_with_argc(id: usize, var_type: VariableType, argc: Option<usize>) -> Variable {
+    pub fn new(id: usize, var_type: VariableType, argc: Option<usize>) -> Variable {
         Variable { id, var_type, argc }
     }
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
+
 pub struct Scope {
     pub variables: HashMap<String, Variable>,
     id_front: usize,
 }
 
-#[allow(dead_code)]
+
 impl Scope {
     pub fn new() -> Scope {
         Scope { variables: HashMap::new(), id_front: 0 }
@@ -190,26 +187,20 @@ impl Scope {
     }
 }
 
-#[allow(dead_code)]
+
 pub struct SemanticData{
     stack: Vec<Scope>,
     globals: Scope,
-    global_id_front: usize,
 }
 
-#[allow(dead_code)]
+
 impl SemanticData {
     pub fn new() -> SemanticData {
-        SemanticData { stack: vec![], globals: Scope::new(), global_id_front: 0 }
-    }
-
-    pub fn new_global_id(&mut self) -> usize {
-        self.global_id_front += 1;
-        self.global_id_front - 1
+        SemanticData { stack: vec![], globals: Scope::new() }
     }
 }
 
-#[allow(dead_code)]
+
 pub fn validate(ast: &mut AbstractSyntaxTree) -> Result<(), SemanticError> {
     let mut data = SemanticData::new();
     if let ASTNodeType::Root = ast.root.node_type {
@@ -260,10 +251,10 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             init = true;
             if let Some(scope) = data.stack.last_mut() {
                 let id = scope.new_id();
-                scope.variables.insert(ident.clone(), Variable::new_with_argc(id, var_type, argc));
+                scope.variables.insert(ident.clone(), Variable::new(id, var_type, argc));
             } else {
                 let id = data.globals.new_id();
-                data.globals.variables.insert(ident.clone(), Variable::new_with_argc(id, var_type, argc));
+                data.globals.variables.insert(ident.clone(), Variable::new(id, var_type, argc));
             }
         }
     }
@@ -693,7 +684,7 @@ mod tests {
             2* 2 ? (2; 2);
             var0(1);
 
-        "));
+        ")).unwrap();
 
         assert_eq!(validate(&mut tree), Ok(()));
         println!("{}", tree.to_pretty_string(true));

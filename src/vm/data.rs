@@ -1,26 +1,29 @@
 use std::{str::Chars, iter::Peekable};
 
+use wasm_bindgen::prelude::*;
+
 use super::{InstrError, parse_number, Reference, VM};
 
-#[allow(dead_code)]
+
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Data {
     Reference(Reference),
     Frame(usize, usize, usize),
 }
 
-#[allow(dead_code)]
+
 impl Data {
-    pub fn to_number(&self, vm: &mut VM) -> Option<f64>{
+    pub fn to_number(&self, vm: &mut VM) -> Result<f64, InstrError>{
         match self {
-            Data::Reference(reference) => reference.to_number(0, 0, vm),
-            Data::Frame(_, _, _) => None,
+            Data::Reference(reference) => Ok(reference.to_number(0, 0, vm)?),
+            Data::Frame(_, _, _) => Err(InstrError::new("reached bottom of stack")),
         }
     }
 }
 
-#[allow(dead_code)]
+
 impl Data {
+    #[allow(dead_code)]
     pub fn from_str(chars: &mut Peekable<Chars>) -> Result<Self, InstrError> {
         if let Some(c) = chars.peek() {
             if *c == 'F' {
@@ -51,13 +54,13 @@ impl ToString for Data {
     }
 }
 
-#[allow(dead_code)]
+
 pub struct Stack {
     stack: Vec<Data>,
     frame_index: usize,
 }
 
-#[allow(dead_code)]
+
 impl Stack {
     pub fn new(capacity: usize) -> Stack {
         let mut stack =  Vec::<Data>::with_capacity(capacity);
@@ -147,17 +150,18 @@ impl Stack {
     }
 }
 
-#[allow(dead_code)]
+
+#[wasm_bindgen]
 pub struct Matrix {
-    pub memory: Box<[f64]>,
+    memory: Vec<f64>,
     width: usize,
     height: usize,
 }
 
-#[allow(dead_code)]
+#[wasm_bindgen]
 impl Matrix {
     pub fn new(width: usize, height: usize) -> Matrix {
-        Matrix{memory: vec![0.0; width*height].into_boxed_slice(), width, height}
+        Matrix{memory: vec![0.0; width*height], width, height}
     }
 
     pub fn get(&self, x:usize, y:usize) -> Option<f64> {
@@ -194,10 +198,12 @@ impl Matrix {
         }
     }
 
+    #[wasm_bindgen(getter)]
     pub fn width(&self) -> usize {
         self.width
     }
 
+    #[wasm_bindgen(getter)]
     pub fn height(&self) -> usize {
         self.height
     }

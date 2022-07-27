@@ -1,6 +1,6 @@
 use std::{fmt::{self}, collections::HashMap, vec};
 
-use crate::{lexer::{Token}, parser::{AbstractSyntaxTree, ASTNode, Annotation, ASTNodeType, StatementType}, vm::{Instr, Reference}};
+use crate::{lexer::{Token}, parser::{AbstractSyntaxTree, ASTNode, Annotation, ASTNodeType, StatementType}, vm::{Instr, Reference, InstrError}};
 
 
 #[macro_use] 
@@ -58,7 +58,7 @@ pub struct GenerationError {
     msg: String
 }
 
-#[allow(dead_code)]
+
 impl GenerationError {
     pub fn new(msg: &str) -> GenerationError {
         GenerationError { msg: msg.to_string() }
@@ -77,16 +77,17 @@ impl fmt::Display for GenerationError {
 
 pub enum JumpType {
     Label(usize),
+    #[allow(dead_code)]
     Function(usize),
 }
 pub enum Line {
+    #[allow(dead_code)]
     Comment(String),
     Instr(Instr),
     Call(usize),
+    #[allow(dead_code)]
     CallInline(usize, usize),
     ExecRef(Instr, usize),
-    SetFunc(usize, usize),
-    SetFuncGlobal(usize, usize),
     Jump(Instr, JumpType),
     Label(usize),
 }
@@ -94,14 +95,13 @@ pub enum Line {
 struct Naming {
     func_id_front: usize,
     tuple_id_front: usize,
-    matrix_id_front: usize,
     label_id_front: usize,
     heap_id_front: usize,
 }
 
 impl Naming {
     pub fn new() -> Naming {
-        Naming { func_id_front: 0, tuple_id_front: 0, matrix_id_front: 0, label_id_front: 0, heap_id_front: 0 }
+        Naming { func_id_front: 0, tuple_id_front: 0, label_id_front: 0, heap_id_front: 0 }
     }
 
     pub fn new_func_id(&mut self) -> usize {
@@ -112,11 +112,6 @@ impl Naming {
     pub fn new_tuple_id(&mut self) -> usize {
         self.tuple_id_front += 1;
         self.tuple_id_front - 1
-    }
-
-    pub fn new_matrix_id(&mut self) -> usize {
-        self.matrix_id_front += 1;
-        self.matrix_id_front - 1
     }
 
     pub fn new_label_id(&mut self) -> usize {
@@ -146,14 +141,13 @@ impl Function {
     }
 }
 
-struct Code {
+pub struct Code {
     global: Function,
 }
 
 impl Code {
     pub fn new(ast: &mut AbstractSyntaxTree) -> Result<Code, GenerationError> {
         let mut naming = Naming::new();
-        let scope = get_annotation!(ast.root, "root does not have a naming", Annotation::Scope(_naming))?;
         let mut code = Code{
             global: Function::new(0, naming.new_func_id())
         };
@@ -164,12 +158,21 @@ impl Code {
         Ok(code)
     }
 
-    pub fn to_instrs(&self) -> (usize, Vec<Instr>) {
+    pub fn from_string_to_instr(code: &str) -> Result<Vec<Instr>, InstrError> {
+        let mut instrs = vec![];
+        for line in code.split("\n") {
+            let instr = Instr::from_str(&mut line.chars().peekable())?;
+            instrs.push(instr);
+        }
+        Ok(instrs)
+    }
+
+    pub fn to_instrs(&self) -> (usize, usize, Vec<Instr>) {
         let mut out = Vec::with_capacity(self.global.code.len() * 2);
         let mut func_indices: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut label_indices: HashMap<usize, usize> = HashMap::new();
 
-        (Code::create_function(&self.global, &mut out, &mut func_indices, &mut label_indices), out)
+        (self.global.args, Code::create_function(&self.global, &mut out, &mut func_indices, &mut label_indices), out)
     } 
 
     fn create_function(func: &Function, out: &mut Vec<Instr>, func_indices: &mut HashMap<usize, (usize, usize)>, label_indices: &mut HashMap<usize, usize>) -> usize {
@@ -219,7 +222,7 @@ impl Code {
                         Instr::And(_, a) => Instr::And(Reference::Executable(*argc, *index), *a),
                         Instr::Or(_, a) => Instr::Or(Reference::Executable(*argc, *index), *a),
                         Instr::Xor(_, a) => Instr::Xor(Reference::Executable(*argc, *index), *a),
-                        Instr::Conditional(_, a, b) => todo!(),
+                        Instr::Conditional(_, _a, _b) => todo!(),
                         Instr::Push(_) => Instr::Push(Reference::Executable(*argc, *index)),
                         Instr::SetArg(a, _) => Instr::SetArg(*a, Reference::Executable(*argc, *index)),
                         Instr::SetGlobal(a, _) => Instr::SetGlobal(*a, Reference::Executable(*argc, *index)),
@@ -233,14 +236,6 @@ impl Code {
                         Instr::ForEachRange(_, a, b, c) => Instr::ForEachRange(Reference::Executable(*argc, *index), *a, *b, *c),
                         _ => todo!(),
                     })
-                },
-                Line::SetFunc(id, func_id) => {
-                    let (argc, index) = func_indices.get(func_id).expect("should already be defined");
-                    out.push(Instr::SetArg(*id, Reference::Executable(*argc, *index)))
-                },
-                Line::SetFuncGlobal(id, func_id) => {
-                    let (argc, index) = func_indices.get(func_id).expect("should already be defined");
-                    out.push(Instr::SetGlobal(*id, Reference::Executable(*argc, *index)))
                 },
                 Line::Jump(instr, jump_type) => {
                     let index = match jump_type {
@@ -278,24 +273,35 @@ impl Code {
 
         return code_start;
     }
-}
 
-impl ToString for Code {
-    fn to_string(&self) -> String {
-        let (start, instrs) = self.to_instrs();
-        let mut out: Vec<char> = format!("start index: {}\n", start).chars().collect();
+
+    pub fn from_instr_to_string(instrs: (usize, usize, Vec<Instr>), pretty: bool) -> String {
+        let (globals, start, instrs) = instrs;
+        let mut out = vec![];
+        if pretty {
+            out = format!("start index: {}\nglobals: {}\n", start, globals).chars().collect();
+        }
         let indent_size = instrs.len().to_string().len() + 1;
         for (i, instr) in instrs.iter().enumerate() {
-            let line_num = format!("{}", i);
-            out.append(&mut line_num.chars().collect());
-            for _ in 0..indent_size-line_num.len() {
-                out.push(' ');
+            if pretty {
+                let line_num = format!("{}", i);
+                out.append(&mut line_num.chars().collect());
+                for _ in 0..indent_size-line_num.len() {
+                    out.push(' ');
+                }
             }
             out.append(&mut instr.to_string().chars().collect());
             out.push('\n');
         }
 
         out.iter().collect()
+    }
+}
+
+impl ToString for Code {
+    fn to_string(&self) -> String {
+        let instrs = self.to_instrs();
+        Code::from_instr_to_string(instrs, false)
     }
 }
 
@@ -317,7 +323,7 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
 }
 
 fn generate_eval_function(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    let func_id = generate_function(true, func, naming, node)?;
+    generate_function(true, func, naming, node)?;
     Ok(Reference::Stack)
 }
 
@@ -542,7 +548,7 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
             if matches!(node.children[i].node_type, ASTNodeType::Throw) {
                 continue;
             }
-            if generate_func_definition(arg_index, is_eval, func, naming, &node.children[i]).is_ok() {
+            if generate_func_definition(is_eval, func, naming, &node.children[i]).is_ok() {
                 if !is_ref {
                     arg_index += 1;
                 }
@@ -564,7 +570,7 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
             if matches!(node.children[i].node_type, ASTNodeType::Throw) {
                 continue;
             }
-            if generate_func_definition(arg_index, is_eval, &mut inner_func, naming, &node.children[i]).is_ok() {
+            if generate_func_definition(is_eval, &mut inner_func, naming, &node.children[i]).is_ok() {
                 if !is_ref {
                     arg_index += 1;
                 }
@@ -609,7 +615,7 @@ fn generate_tuple(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
 }
 
 fn generate_expression_list(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    if let ASTNodeType::ExpressionList(size) = node.node_type {
+    if let ASTNodeType::ExpressionList(_) = node.node_type {
         let mut prev_reference = Reference::None;
         for i in 0..node.children.len() {
             if i % 2 != 0 {
@@ -670,7 +676,7 @@ fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode
     Ok(Reference::Stack)
 }
 
-fn generate_reference(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
+fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     let reference = if let ASTNodeType::Reference(reference) = &node.node_type {
         reference
     } else {
@@ -844,19 +850,18 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
     Ok(reference)
 }
 
-fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<(), GenerationError> {
+fn generate_func_definition(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<(), GenerationError> {
     if !matches!(node.node_type, ASTNodeType::Set(_)) {
         return Err(GenerationError::new("node is not a definition"));
     }
     let is_exec = get_annotation!(node.children[0], "", Annotation::Executable).is_ok();
     let is_expression_list = get_annotation!(node.children[0], "", Annotation::ExpressionList).is_ok();
-    let id = get_annotation!(node.children[0], "", Annotation::GlobalId(id))
-        .or_else(|_| get_annotation!(node.children[0], "definition requires id", Annotation::Id(id)))?;
+    let id = get_annotation!(node.children[0], "definition requires id", Annotation::Id(id))?;
 
     let mut end = 0;
     if !is_eval {
         end = naming.new_label_id();
-        func.code.push(Line::Jump(Instr::JumpNotNone(0, Reference::Argument(arg_index)), JumpType::Label(end)));
+        func.code.push(Line::Jump(Instr::JumpNotNone(0, Reference::Argument(*id)), JumpType::Label(end)));
     }
 
     if is_exec {
@@ -864,7 +869,7 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
         if is_eval {
             func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
         } else {
-            func.code.push(Line::ExecRef(Instr::SetArg(arg_index, Reference::None), func_id));
+            func.code.push(Line::ExecRef(Instr::SetArg(*id, Reference::None), func_id));
         }
     } else if is_expression_list {
         let mut inner_func = Function::new(0, naming.new_func_id());
@@ -877,7 +882,7 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
         if is_eval {
             func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
         } else {
-            func.code.push(Line::ExecRef(Instr::SetArg(arg_index, Reference::None), func_id));
+            func.code.push(Line::ExecRef(Instr::SetArg(*id, Reference::None), func_id));
         }
     } else {
         let reference = match &node.children[1].node_type {
@@ -894,7 +899,7 @@ fn generate_func_definition(arg_index: usize, is_eval: bool, func: &mut Function
         if is_eval {
             func.code.push(Line::Instr(Instr::Push(reference)));
         } else {
-            func.code.push(Line::Instr(Instr::SetArg(arg_index, reference)));
+            func.code.push(Line::Instr(Instr::SetArg(*id, reference)));
         }
     }
 
@@ -933,7 +938,7 @@ mod tests {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
             {100;200} <* [10];
             ({100}) <- [10];
-        "));
+        ")).unwrap();
 
 
         if let Err(err) = validate(&mut tree) {

@@ -150,11 +150,12 @@ mod macros {
     #[macro_export]
     macro_rules! assert_parse_eq {
         ($input:tt, $output:tt) => {
-            assert_eq!(AbstractSyntaxTree::new(&mut Tokenizer::new($input)).to_string(false), $output);
+            assert_eq!(AbstractSyntaxTree::new(&mut Tokenizer::new($input)).unwrap().to_string(false), $output);
         };
     }
 }
 
+#[derive(Debug)]
 pub struct ParseError {
     msg: String
 }
@@ -180,15 +181,13 @@ struct Parser<'a> {
     tree: AbstractSyntaxTree,
 }
 
-pub fn parse(tokenizer: &mut Tokenizer) -> AbstractSyntaxTree {
+pub fn parse(tokenizer: &mut Tokenizer) -> Result<AbstractSyntaxTree, ParseError> {
     let tree = AbstractSyntaxTree{root: Box::new(ASTNode::new(ASTNodeType::Root, vec![], Annotation::pos_to_debug(tokenizer.pos())))};
     let mut parser = Parser{tokenizer: tokenizer, tree};
 
-    if let Err(err) = parse_root(&mut parser) {
-        panic!("{}", err.to_string());
-    }
+    parse_root(&mut parser)?;
 
-    parser.tree
+    Ok(parser.tree)
 }
 
 fn parse_root(parser: &mut Parser) -> Result<(), ParseError> {

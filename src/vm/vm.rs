@@ -6,7 +6,7 @@ pub struct InstrError {
     msg: String
 }
 
-#[allow(dead_code)]
+
 impl InstrError {
     pub fn new(msg: &str) -> InstrError {
         InstrError { msg: msg.to_string() }
@@ -39,34 +39,31 @@ pub enum Reference {
 
 
 impl Reference {
-    pub fn to_number(&self, x: usize, y: usize, vm:  &mut VM) -> Option<f64> {
+    pub fn to_number(&self, x: usize, y: usize, vm:  &mut VM) -> Result<f64, InstrError> {
         match self {
-            Reference::Stack => vm.stack.pop().and_then(|data| data.to_number(vm)),
-            Reference::StackPeek => vm.stack.peek().and_then(|data| data.to_number(vm)),
+            Reference::Stack => vm.stack.pop().ok_or(InstrError::new("couldnt pop from stack")).and_then(|data| data.to_number(vm)),
+            Reference::StackPeek => vm.stack.peek().ok_or(InstrError::new("couldnt peep from stack")).and_then(|data| data.to_number(vm)),
             Reference::Global(index) => {
-                let reference = vm.globals.get(*index)?.clone();
+                let reference = vm.globals.get(*index).ok_or(InstrError::new("couldnt get global"))?.clone();
                 reference.to_number(x, y, vm)
             },
             Reference::Argument(index) => {
-                let reference = vm.stack.get_arg(*index)?.clone();
+                let reference = vm.stack.get_arg(*index).ok_or(InstrError::new("couldnt get argument index"))?.clone();
                 reference.to_number(x, y, vm)
             },
             Reference::Heap(index) => {
-                let reference = vm.heap.get(index)?.clone();
+                let reference = vm.heap.get(index).ok_or(InstrError::new("couldnt get global index"))?.clone();
                 reference.to_number(x, y, vm)
             },
-            Reference::Matrix => vm.matrix.get(x, y),
-            Reference::Literal(num) => Some(*num),
+            Reference::Matrix => vm.matrix.get(x, y).ok_or(InstrError::new("couldnt get matrix index")),
+            Reference::Literal(num) => Ok(*num),
             Reference::Tuple(tuple_index) => {
-                if let Some(tuple) = vm.tuples.get(tuple_index) {
-                    let reference = tuple.get(x)?.clone();
-                    reference.to_number(x, y, vm)
-                } else {
-                    None
-                }
+                let tuple = vm.tuples.get(tuple_index).ok_or(InstrError::new("couldnt get tuple"))?;
+                let reference = tuple.get(x).ok_or(InstrError::new("couldnt get tuple index"))?.clone();
+                reference.to_number(x, y, vm)
             },
-            Reference::None => None,
-            Reference::Executable(argc, instr_pointer) => vm.execute(*argc, *instr_pointer).to_number(x, y, vm),
+            Reference::None => Ok(0.0),
+            Reference::Executable(argc, instr_pointer) => vm.execute(*argc, *instr_pointer)?.to_number(x, y, vm),
         }
     }
 
@@ -167,7 +164,7 @@ impl ToString for Reference {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)]
+
 pub enum Instr {
     Add(Reference, Reference),
     Subtract(Reference, Reference),
@@ -240,8 +237,8 @@ pub enum Instr {
 
 
 impl Instr {
-    #[allow(dead_code)]
-    fn from_str(chars: &mut Peekable<Chars>) -> Result<Self, InstrError> {
+
+    pub fn from_str(chars: &mut Peekable<Chars>) -> Result<Self, InstrError> {
         let mut instr = vec![];
 
         const INSTR_LEN: usize = 4;
@@ -465,9 +462,9 @@ pub fn parse_usize(chars: &mut Peekable<Chars>) -> Result<usize, InstrError>{
 }
 
 
-#[allow(dead_code)]
+
 mod instr_ops {
-    use crate::vm::{Data, Matrix};
+    use crate::vm::{Data};
 
     use super::{VM, Reference, InstrError};
     
@@ -507,8 +504,8 @@ mod instr_ops {
         Ok(Some(if a >= b { 1.0 } else { 0.0 }))
     }
 
-    pub fn not(a: f64, b: f64, _vm: &mut VM) -> Result<Option<f64>, InstrError>{
-        Ok(Some(if a != b { 1.0 } else { 0.0 }))
+    pub fn not(a: f64, _vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        Ok(Some(if a == 0.0 { 1.0 } else { 0.0 }))
     }
 
     pub fn and(a: f64, b: f64, _vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -561,15 +558,15 @@ mod instr_ops {
         }
     }   
 
-    pub fn len_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+    pub fn len_matrix(_a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         Ok(Some(vm.matrix.len() as f64))
     }
 
-    pub fn width_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+    pub fn width_matrix(_a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         Ok(Some(vm.matrix.width() as f64))
     }
 
-    pub fn height_matrix(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+    pub fn height_matrix(_a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         Ok(Some(vm.matrix.height() as f64))
     }
     pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -686,7 +683,7 @@ pub struct VM {
 }
 
 impl VM {
-    #[allow(dead_code)]
+
     pub fn new(matrix_size: (usize, usize), globals_capacity: usize, stack_capacity: usize, instrs: Vec<Instr>, instr_pointer: usize)-> VM {
         VM { 
             globals: vec![Reference::None; globals_capacity], 
@@ -699,13 +696,17 @@ impl VM {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn run(&mut self) {
+    pub fn get_matrix(self) -> Box<Matrix>{
+        self.matrix
+    }
+
+
+    pub fn run(&mut self) -> Result<(), InstrError> {
         while self.instr_pointer < self.instrs.len() {
-            if let Err(err) = self.eval_instr() {
-                panic!("{}", err.msg);
-            }
+            self.eval_instr()?;
         }
+        
+        Ok(())
     }
 
     pub fn eval_instr(&mut self) -> Result<(), InstrError> {
@@ -721,14 +722,7 @@ impl VM {
                 Instr::Greater (a,b) => self.eval_binary_op(a, b, &instr_ops::greater),
                 Instr::LesserEqual (a,b) => self.eval_binary_op(a, b, &instr_ops::lesser_equal),
                 Instr::GreaterEqual (a,b) => self.eval_binary_op(a, b, &instr_ops::greater_equal),
-                Instr::Not(a) => {
-                    let a = a.to_number(0, 0, self);
-                    if let Some(a) = a {
-                        Ok(Some(if a != 0.0 { 0.0 } else { 1.0 }))
-                    } else {
-                        Err(InstrError::new("could not resolve references"))
-                    }
-                },
+                Instr::Not(a) => self.eval_unary_op(a, &instr_ops::not),
                 Instr::And (a,b) => self.eval_binary_op(a, b, &instr_ops::and),
                 Instr::Or (a,b) => self.eval_binary_op(a, b, &instr_ops::or),
                 Instr::Xor (a,b) => self.eval_binary_op(a, b, &instr_ops::xor),
@@ -798,8 +792,22 @@ impl VM {
                 Instr::CreateTuple(a, b) => self.eval_binary_op_fixed1(a, b, &instr_ops::create_tuple),
                 Instr::RemoveTuple(a) => self.eval_unary_op_fixed(a, &instr_ops::remove_tuple),
                 Instr::GetTuple(a, b) => {
-                    if let Some(b) = b.to_number(0, 0, self) {
-                        if let Some(references) = self.tuples.get(&a) {
+                    let b = b.to_number(0, 0, self)?;
+                    if let Some(references) = self.tuples.get(&a) {
+                        if let Some(reference) = references.get(b.floor() as usize) {
+                            self.stack.push(Data::Reference(*reference));
+                            Ok(None)
+                        } else {
+                            Err(InstrError::new("tuple index out of bounds"))
+                        }
+                    } else {
+                        Err(InstrError::new("args index out of bounds"))
+                    }
+                },
+                Instr::GetTupleReference(a, b) => {
+                    if let Reference::Tuple(id) = self.eval_tuple_or_matrix(a) {
+                        let b = b.to_number(0, 0, self)?;
+                        if let Some(references) = self.tuples.get(&id) {
                             if let Some(reference) = references.get(b.floor() as usize) {
                                 self.stack.push(Data::Reference(*reference));
                                 Ok(None)
@@ -810,43 +818,20 @@ impl VM {
                             Err(InstrError::new("args index out of bounds"))
                         }
                     } else {
-                        Err(InstrError::new("reference does not resolve to a number"))
-                    }
-                },
-                Instr::GetTupleReference(a, b) => {
-                    if let Reference::Tuple(id) = self.eval_tuple_or_matrix(a) {
-                        if let Some(b) = b.to_number(0, 0, self) {
-                            if let Some(references) = self.tuples.get(&id) {
-                                if let Some(reference) = references.get(b.floor() as usize) {
-                                    self.stack.push(Data::Reference(*reference));
-                                    Ok(None)
-                                } else {
-                                    Err(InstrError::new("tuple index out of bounds"))
-                                }
-                            } else {
-                                Err(InstrError::new("args index out of bounds"))
-                            }
-                        } else {
-                            Err(InstrError::new("reference does not resolve to a number"))
-                        }
-                    } else {
                         Err(InstrError::new("first reference must be a tuple"))
                     }
                 },
                 Instr::SetTuple(a, b, c) => {
-                    if let Some(b) = b.to_number(0, 0, self) {
-                        if let Some(references) = self.tuples.get_mut(&a) {
-                            if let Some(reference) = references.get_mut(b.floor() as usize) {
-                                *reference = c;
-                                Ok(None)
-                            } else {
-                                Err(InstrError::new("tuple index out of bounds"))
-                            }
+                    let b = b.to_number(0, 0, self)?;
+                    if let Some(references) = self.tuples.get_mut(&a) {
+                        if let Some(reference) = references.get_mut(b.floor() as usize) {
+                            *reference = c;
+                            Ok(None)
                         } else {
-                            Err(InstrError::new("args index out of bounds"))
+                            Err(InstrError::new("tuple index out of bounds"))
                         }
                     } else {
-                        Err(InstrError::new("reference does not resolve to a number"))
+                        Err(InstrError::new("args index out of bounds"))
                     }
                 },
                 Instr::LenTuple(a) => self.eval_unary_op_fixed(a, &instr_ops::len_tuple),
@@ -859,7 +844,7 @@ impl VM {
                 Instr::JumpGreaterOrEqual(a, b, c) =>  self.eval_trinary_op_fixed1(a, b, c, &instr_ops::jump_greater_equal),
                 Instr::JumpNotNone(a, b) => {
                     let reference = match b {
-                        Reference::Executable(argc, instr_pointer) => self.execute(argc, instr_pointer),
+                        Reference::Executable(argc, instr_pointer) => self.execute(argc, instr_pointer)?,
                         Reference::Stack => {
                             if let Some(Data::Reference(reference)) = self.stack.peek() {
                                reference
@@ -908,7 +893,7 @@ impl VM {
                 }
                 Instr::ExecRef(a) => {
                     if let Reference::Executable(argc, instr_pointer) = a{
-                        let reference = self.execute(argc, instr_pointer);
+                        let reference = self.execute(argc, instr_pointer)?;
                         self.stack.push(Data::Reference(reference));
                         Ok(None)
                     } else {
@@ -961,12 +946,9 @@ impl VM {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(Reference::Literal(acc)));
                                             vm.stack.push(Data::Reference(Reference::Literal(num)));
-                                        });
+                                        })?;
 
-                                        let num = match reference.to_number(0, 0, self) {
-                                            Some(num) => num,
-                                            None => return Err(InstrError::new("func return value must be a number")),
-                                        };
+                                        let num = reference.to_number(0, 0, self)?;
 
                                         acc += num;
                                     }
@@ -992,12 +974,9 @@ impl VM {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(Reference::Literal(acc)));
                                             vm.stack.push(Data::Reference(reference));
-                                        });
+                                        })?;
 
-                                        let num = match reference.to_number(0, 0, self) {
-                                            Some(num) => num,
-                                            None => return Err(InstrError::new("func return value must be a number")),
-                                        };
+                                        let num = reference.to_number(0, 0, self)?;
 
                                         acc += num;
                                     }
@@ -1016,17 +995,13 @@ impl VM {
                 },
                 Instr::ReduceRange(a, b, c, d) => {
                     if let Reference::Executable(argc, instr_pointer) = a {
-                        let b = b.to_number(0, 0, self);
-                        let c = c.to_number(0, 0, self);
-                        let d = d.to_number(0, 0, self);
+                        let b = b.to_number(0, 0, self)?;
+                        let c = c.to_number(0, 0, self)?;
+                        let d = d.to_number(0, 0, self)?;
 
-                        if b.is_none() || c.is_none() || d.is_none() || d.is_none()  {
-                            return Err(InstrError::new("range references must eval to numbers"));
-                        }
-
-                        let b = b.unwrap().floor() as usize;
-                        let c = c.unwrap().floor() as usize;
-                        let d = d.unwrap().floor() as usize;
+                        let b = b.floor() as usize;
+                        let c = c.floor() as usize;
+                        let d = d.floor() as usize;
 
                         let mut acc = 0.0;
                         for x in (b..c).step_by(d) {
@@ -1034,12 +1009,9 @@ impl VM {
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                 vm.stack.push(Data::Reference(Reference::Literal(acc)));
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
-                            });
+                            })?;
 
-                            let num = match reference.to_number(0, 0, self) {
-                                Some(num) => num,
-                                None => return Err(InstrError::new("func return value must be a number")),
-                            };
+                            let num = reference.to_number(0, 0, self)?;
 
                             acc += num;
                         }
@@ -1065,13 +1037,9 @@ impl VM {
                                             vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(Reference::Literal(num)));
-                                        });
+                                        })?;
 
-                                        let num = match reference.to_number(0, 0, self) {
-                                            Some(num) => num,
-                                            None => return Err(InstrError::new("func return value must be a number")),
-                                        };
-
+                                        let num = reference.to_number(0, 0, self)?;
                                         
                                         self.matrix.set(x, y, num);
                                     }
@@ -1094,7 +1062,7 @@ impl VM {
                                         let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(reference));
-                                        });
+                                        })?;
 
                                         *self.tuples.get_mut(&id).unwrap().get_mut(x).unwrap() = reference;
                                     }
@@ -1126,7 +1094,7 @@ impl VM {
                                             vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(Reference::Literal(num)));
-                                        });
+                                        })?;
                                     }
                                 }
 
@@ -1148,7 +1116,7 @@ impl VM {
                                         self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(reference));
-                                        });
+                                        })?;
                                     }
 
                                     self.stack.push(Data::Reference(Reference::Tuple(id)));
@@ -1167,23 +1135,19 @@ impl VM {
                     if let Reference::Executable(argc, instr_pointer) = a {
                         let mut last_reference = Reference::None;
 
-                        let b = b.to_number(0, 0, self);
-                        let c = c.to_number(0, 0, self);
-                        let d = d.to_number(0, 0, self);
+                        let b = b.to_number(0, 0, self)?;
+                        let c = c.to_number(0, 0, self)?;
+                        let d = d.to_number(0, 0, self)?;
 
-                        if b.is_none() || c.is_none() || d.is_none() || d.is_none()  {
-                            return Err(InstrError::new("range references must eval to numbers"));
-                        }
-
-                        let b = b.unwrap().floor() as usize;
-                        let c = c.unwrap().floor() as usize;
-                        let d = d.unwrap().floor() as usize;
+                        let b = b.floor() as usize;
+                        let c = c.floor() as usize;
+                        let d = d.floor() as usize;
 
                         for x in (b..c).step_by(d) {
                             last_reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
-                            });
+                            })?;
                         }
 
                         self.stack.push(Data::Reference(last_reference));
@@ -1207,29 +1171,25 @@ impl VM {
         }
     }
 
-    fn execute(&mut self, argc: usize, instr_pointer: usize) -> Reference {
+    fn execute(&mut self, argc: usize, instr_pointer: usize) -> Result<Reference, InstrError> {
         let prev_instr_pointer = self.instr_pointer;
         self.stack.push(Data::Frame(argc, 0, self.instr_pointer));
         self.instr_pointer = instr_pointer;
         while self.instr_pointer != prev_instr_pointer && self.instr_pointer < self.instrs.len() {
-            if let Err(err) = self.eval_instr() {
-                panic!("{}", err.msg);
-            }
+            self.eval_instr()?;
         }
-        Reference::Stack
+        Ok(Reference::Stack)
     }
 
-    fn execute_inline(&mut self, argc: usize, instr_pointer: usize, op: &mut dyn FnMut(&mut VM)->()) -> Reference {
+    fn execute_inline(&mut self, argc: usize, instr_pointer: usize, op: &mut dyn FnMut(&mut VM)->()) -> Result<Reference, InstrError> {
         let prev_instr_pointer = self.instr_pointer;
         self.stack.push(Data::Frame(argc, 0, self.instr_pointer));
         op(self);
         self.instr_pointer = instr_pointer;
         while self.instr_pointer != prev_instr_pointer && self.instr_pointer < self.instrs.len() {
-            if let Err(err) = self.eval_instr() {
-                panic!("{}", err.msg);
-            }
+            self.eval_instr()?;
         }
-        Reference::Stack
+        Ok(Reference::Stack)
     }
 
     fn eval_tuple_or_matrix(&mut self, reference: Reference) -> Reference {
@@ -1262,17 +1222,10 @@ impl VM {
         }
     }
 
-    #[allow(dead_code)]
-    fn eval_unary_op(&mut self, a: Reference,op: &dyn Fn(f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let a = a.to_number(0, 0, self);
 
-        if a == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let a = a.unwrap();
-            
-            op(a, self)
-        }
+    fn eval_unary_op(&mut self, a: Reference,op: &dyn Fn(f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
+        let a = a.to_number(0, 0, self)?;
+        op(a, self)
     }
 
     fn eval_unary_op_fixed(&mut self, a: usize,op: &dyn Fn(usize, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
@@ -1280,111 +1233,60 @@ impl VM {
     }
 
     fn eval_binary_op(&mut self, a: Reference, b: Reference,op: &dyn Fn(f64, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let a = a.to_number(0, 0, self);
-        let b = b.to_number(1, 0, self);
+        let a = a.to_number(0, 0, self)?;
+        let b = b.to_number(1, 0, self)?;
 
-        if a == None || b == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let a = a.unwrap();
-            let b = b.unwrap();
-            
-            op(a,b, self)
-        }
+        op(a,b, self)
     }
 
     fn eval_binary_op_fixed1(&mut self, a: usize, b: Reference,op: &dyn Fn(usize, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let b = b.to_number(1, 0, self);
+        let b = b.to_number(1, 0, self)?;
 
-        if b == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let b = b.unwrap();
-            
-            op(a,b, self)
-        }
+        op(a,b, self)
     }
 
-    #[allow(dead_code)]
+
     fn eval_binary_op_fixed2(&mut self, a: usize, b: usize,op: &dyn Fn(usize, usize, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
         op(a,b, self)
     }
 
     fn eval_trinary_op(&mut self, a: Reference, b: Reference, c: Reference,op: &dyn Fn(f64, f64, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let a = a.to_number(0, 0, self);
-        let b = b.to_number(1, 0, self);
-        let c = c.to_number(2, 0, self);
+        let a = a.to_number(0, 0, self)?;
+        let b = b.to_number(1, 0, self)?;
+        let c = c.to_number(2, 0, self)?;
         
-        if a == None || b == None || c == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let a = a.unwrap();
-            let b = b.unwrap();
-            let c = c.unwrap();
-
-            op(a,b,c, self)
-        }
+        op(a,b,c, self)
     }
 
     fn eval_trinary_op_fixed1(&mut self, a: usize, b: Reference, c: Reference,op: &dyn Fn(usize, f64, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let b = b.to_number(1, 0, self);
-        let c = c.to_number(2, 0, self);
+        let b = b.to_number(1, 0, self)?;
+        let c = c.to_number(2, 0, self)?;
         
-        if b == None || c == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let b = b.unwrap();
-            let c = c.unwrap();
-
-            op(a, b,c, self)
-        }
+        op(a, b,c, self)
     }
 
     #[allow(dead_code)]
     fn eval_trinary_op_fixed2(&mut self, a: usize, b: usize, c: Reference,op: &dyn Fn(usize, usize, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let c = c.to_number(2, 0, self);
-        
-        if c == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let c = c.unwrap();
-
-            op(a, b, c, self)
-        }
+        let c = c.to_number(2, 0, self)?;
+        op(a, b, c, self)
     }
 
     #[allow(dead_code)]
     fn eval_quadnary_op(&mut self, a: Reference, b: Reference, c: Reference, d: Reference,op: &dyn Fn(f64, f64, f64, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let a = a.to_number(0, 0, self);
-        let b = b.to_number(1, 0, self);
-        let c = c.to_number(2, 0, self);
-        let d = d.to_number(2, 0, self);
+        let a = a.to_number(0, 0, self)?;
+        let b = b.to_number(1, 0, self)?;
+        let c = c.to_number(2, 0, self)?;
+        let d = d.to_number(2, 0, self)?;
         
-        if a == None || b == None || c == None || d == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let a = a.unwrap();
-            let b = b.unwrap();
-            let c = c.unwrap();
-            let d = d.unwrap();
-
-            op(a,b,c, d, self)
-        }
+        op(a,b,c, d, self)
     }
 
+    #[allow(dead_code)]
     fn eval_quadnary_op_fixed(&mut self, a: usize, b: Reference, c: Reference, d: Reference,op: &dyn Fn(usize, f64, f64, f64, &mut VM) -> Result<Option<f64>, InstrError>) -> Result<Option<f64>, InstrError> {
-        let b = b.to_number(1, 0, self);
-        let c = c.to_number(2, 0, self);
-        let d = d.to_number(2, 0, self);
-        
-        if b == None || c == None || d == None {
-            Err(InstrError::new("could not resolve references"))
-        } else {
-            let b = b.unwrap();
-            let c = c.unwrap();
-            let d = d.unwrap();
+        let b = b.to_number(1, 0, self)?;
+        let c = c.to_number(2, 0, self)?;
+        let d = d.to_number(2, 0, self)?;
 
-            op(a,b,c, d, self)
-        }
+        op(a,b,c, d, self)
     }
 }
