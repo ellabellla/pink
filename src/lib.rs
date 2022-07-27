@@ -18,6 +18,11 @@ extern "C" {
     fn alert(s: &str);
 }
 
+#[wasm_bindgen(raw_module = "../www/js/extern.js")]
+extern "C" {
+    fn println(s: &str);
+}
+
 #[wasm_bindgen]
 pub struct Compiled {
     asm: String,
@@ -72,9 +77,22 @@ pub fn compile(input: &str) -> Result<Compiled, String> {
 #[wasm_bindgen]
 pub fn run(program: Compiled, width: usize, height: usize) -> Result<Matrix, String> {
     let instrs = Code::from_string_to_instr(&program.asm).map_err(|err| err.to_string())?;
-    let mut vm = VM::new((width, height), program.globals, 100, instrs, program.start);
+    let mut vm = VM::new((width, height), program.globals, 100, instrs, program.start, Box::new(Printer{}));
     vm.run().map_err(|err| err.to_string())?;
     let matrix = *vm.get_matrix();
 
     Ok(matrix)
+}
+
+struct Printer {
+}
+
+impl ExternPrintLn for Printer {
+    fn println_num(&self, msg: f64) {
+        println(&format!("{}", msg));
+    }
+
+    fn println_str(&self, msg: &str) {
+        println(msg);
+    }
 }
