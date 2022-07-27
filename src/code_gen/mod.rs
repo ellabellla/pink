@@ -349,7 +349,7 @@ fn generate_function(is_eval: bool, func: &mut Function, naming: &mut Naming, no
 }
 
 fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
-    if get_annotation!(node, "", Annotation::Executable).is_err() {
+    if matches!(node.node_type, ASTNodeType::ExpressionList(_)) {
         return Err(GenerationError::new("not an exec"));
     }
     let is_ref = get_annotation!(node.children[1], "", Annotation::GlobalId(_id))
@@ -942,7 +942,8 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            # <- [@; @];
+            fac:(x:0) -> [x=0 ? (1;x*(x-1) -> fac)];
+            (10) -> fac,
         ")).unwrap();
 
 
