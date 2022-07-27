@@ -11,9 +11,12 @@ init()
         let asmGlobals = document.getElementById("asm-globals");
         let outputCanvas = document.getElementById("output-canvas");
 
+        const width = outputCanvas.width;
+        const height = outputCanvas.height;
+
         compileButton.addEventListener("click", (event) => {
             try {
-                let compiled = compile(code.value);
+                let compiled = compile(code.value,width, height);
                 prettyAsm.value = compiled.pretty_asm;
                 asm.value = compiled.asm;
                 asmStart.innerHTML = compiled.start;
@@ -30,12 +33,11 @@ init()
                 const width = outputCanvas.width;
                 const height = outputCanvas.height;
                 const matrix = run(
-                        new Compiled(asm.value, prettyAsm.value, Number.parseInt(asmStart.value), Number.parseInt(asmGlobals.value)),
+                        new Compiled(asm.value, prettyAsm.value, Number.parseInt(asmStart.innerHTML), Number.parseInt(asmGlobals.innerHTML)),
                         width,
                         height
                     );
-                const memory = matrix.memory;
-                const data = new Uint8ClampedArray(memory.buffer); 
+                const data = new Uint8ClampedArray(matrix.memory); 
                 const image = new ImageData(data, width, height);
 
                 var ctx = outputCanvas.getContext("2d");
@@ -43,7 +45,7 @@ init()
                 ctx.putImageData(image, 0, 0);
                 ctx.imageSmootingEnabled = false;
                 ctx.globalCompositeOperation = "copy";
-                ctx.drawImage(canvas, 0, 0, 3, 4, 0, 0, width, height);
+                ctx.drawImage(outputCanvas, 0, 0, 3, 4, 0, 0, width, height);
             } catch(err) {
                 console.log(err);
             }
