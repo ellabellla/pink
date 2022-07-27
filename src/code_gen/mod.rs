@@ -127,7 +127,7 @@ impl Naming {
 
 struct Function {
     id: usize,
-    args: usize,
+    argc: usize,
     code: Vec<Line>,
     funcs: HashMap<usize, Function>,
     heap: Vec<usize>,
@@ -137,7 +137,7 @@ struct Function {
 
 impl Function {
     pub fn new(args:usize, id: usize) -> Function {
-        Function { id, args, code: vec![], funcs: HashMap::new(), heap: vec![], tuples: vec![], ret: Reference::None }
+        Function { id, argc: args, code: vec![], funcs: HashMap::new(), heap: vec![], tuples: vec![], ret: Reference::None }
     }
 }
 
@@ -155,6 +155,8 @@ impl Code {
             generate_statement(&mut code.global, &mut naming, &ast.root.children[i])?;
         }
         
+        code.global.argc = *get_annotation!(ast.root, "expected scope annotation on root", Annotation::Scope(scope))?;
+
         Ok(code)
     }
 
@@ -172,7 +174,7 @@ impl Code {
         let mut func_indices: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut label_indices: HashMap<usize, usize> = HashMap::new();
 
-        (self.global.args, Code::create_function(&self.global, &mut out, &mut func_indices, &mut label_indices), out)
+        (self.global.argc, Code::create_function(&self.global, &mut out, &mut func_indices, &mut label_indices), out)
     } 
 
     fn create_function(func: &Function, out: &mut Vec<Instr>, func_indices: &mut HashMap<usize, (usize, usize)>, label_indices: &mut HashMap<usize, usize>) -> usize {
@@ -181,7 +183,7 @@ impl Code {
         }
 
         let code_start = out.len();
-        func_indices.insert(func.id, (func.args, code_start));
+        func_indices.insert(func.id, (func.argc, code_start));
 
         let mut index = out.len();
         for line in &func.code {
@@ -358,8 +360,8 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
         let mut inner_func = func.funcs.get_mut(&func_id).expect("function");
         if let Ok(id) = get_annotation!(node.children[1], "", Annotation::GlobalId(_id)) {
             let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
-            if inner_func.args < argc {
-                for _ in 0..argc-inner_func.args {
+            if inner_func.argc < argc {
+                for _ in 0..argc-inner_func.argc {
                     inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
                 }
             }
@@ -367,8 +369,8 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
             inner_func.ret = Reference::Stack;
         } else if let Ok(id) = get_annotation!(node.children[1], "", Annotation::Id(_id)) {
             let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
-            if inner_func.args < argc {
-                for _ in 0..argc-inner_func.args {
+            if inner_func.argc < argc {
+                for _ in 0..argc-inner_func.argc {
                     inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
                 }
             }
@@ -586,7 +588,7 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
             } 
         }
         
-        inner_func.args = arg_index;
+        inner_func.argc = arg_index;
     
         let id = inner_func.id;
         func.funcs.insert(inner_func.id, inner_func);
@@ -936,8 +938,8 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            {100;200} <* [10];
-            ({100}) <- [10];
+            fib:(x:0) -> [x=0 ? (1;x*(x-1) -> fib)];
+            (10) -> fib,
         ")).unwrap();
 
 
@@ -951,7 +953,8 @@ mod tests {
 
         match code {
             Ok(code) => {
-                println!("{}", code.to_string())
+                let instrs = code.to_instrs();
+                println!("{}", Code::from_instr_to_string(instrs, true));
             },
             Err(err) => panic!("{}", err.to_string())
         }
