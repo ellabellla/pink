@@ -349,7 +349,7 @@ fn generate_function(is_eval: bool, func: &mut Function, naming: &mut Naming, no
 }
 
 fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
-    if node.children.len() < 2 {
+    if get_annotation!(node, "", Annotation::Executable).is_err() {
         return Err(GenerationError::new("not an exec"));
     }
     let is_ref = get_annotation!(node.children[1], "", Annotation::GlobalId(_id))
@@ -934,13 +934,15 @@ mod tests {
     use crate::{parser::AbstractSyntaxTree, lexer::Tokenizer, semantic::validate};
 
     use super::Code;
-
+    /*
+        fib:(x:0) -> [x=0 ? (1;x*(x-1) -> fib)];
+            (10) -> fib,
+    */
 
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            fib:(x:0) -> [x=0 ? (1;x*(x-1) -> fib)];
-            (10) -> fib,
+            # <- [@; @];
         ")).unwrap();
 
 
