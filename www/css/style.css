@@ -1,0 +1,71 @@
+main {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+
+section {
+    width: 30vw;
+    border: 4px;
+    padding: 1rem;
+}
+
+#code-section {
+    border-left: 0.1rem;
+    border-right: 0.0rem;
+    border-top: 0.1rem;
+    border-bottom: 0.1rem;
+    border-style: solid;
+    border-color: black;
+}
+
+textarea {
+    width: 100%;
+    height: 95%; 
+    box-sizing: border-box;
+    resize: none;
+}
+
+#asm-section {
+    border-left: 0.1rem;
+    border-right: 0.1rem;
+    border-top: 0.1rem;
+    border-bottom: 0.1rem;
+    border-style: solid;
+    border-color: black;
+}
+
+#output-section {
+    border-left: 0.0rem;
+    border-right: 0.1rem;
+    border-top: 0.1rem;
+    border-bottom: 0.1rem;
+    border-style: solid;
+    border-color: black;
+}
+
+#output-canvas {
+    border-left: 0.1rem;
+    border-right: 0.1rem;
+    border-top: 0.1rem;
+    border-bottom: 0.1rem;
+    border-style: solid;
+    border-color: black;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#output-console {
+    border-left: 0.1rem;
+    border-right: 0.1rem;
+    border-top: 0.1rem;
+    border-bottom: 0.1rem;
+    border-style: solid;
+    border-color: black;
+    margin-top: 1rem;
+    height: 45%;
+}
