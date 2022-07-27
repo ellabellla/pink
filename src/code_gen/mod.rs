@@ -163,6 +163,9 @@ impl Code {
     pub fn from_string_to_instr(code: &str) -> Result<Vec<Instr>, InstrError> {
         let mut instrs = vec![];
         for line in code.split("\n") {
+            if line.len() == 0 {
+                continue;
+            }
             let instr = Instr::from_str(&mut line.chars().peekable())?;
             instrs.push(instr);
         }
@@ -174,12 +177,12 @@ impl Code {
         let mut func_indices: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut label_indices: HashMap<usize, usize> = HashMap::new();
 
-        (self.global.argc, Code::create_function(&self.global, &mut out, &mut func_indices, &mut label_indices), out)
+        (self.global.argc, Code::create_function(true,&self.global, &mut out, &mut func_indices, &mut label_indices), out)
     } 
 
-    fn create_function(func: &Function, out: &mut Vec<Instr>, func_indices: &mut HashMap<usize, (usize, usize)>, label_indices: &mut HashMap<usize, usize>) -> usize {
+    fn create_function(is_global: bool, func: &Function, out: &mut Vec<Instr>, func_indices: &mut HashMap<usize, (usize, usize)>, label_indices: &mut HashMap<usize, usize>) -> usize {
         for key in func.funcs.keys()  {
-            Code::create_function(func.funcs.get(key).unwrap(), out, func_indices, label_indices);
+            Code::create_function(false, func.funcs.get(key).unwrap(), out, func_indices, label_indices);
         }
 
         let code_start = out.len();
@@ -271,7 +274,9 @@ impl Code {
             out.push(Instr::Free(*heap));
         }
 
-        out.push(Instr::PopFrame(func.ret));
+        if !is_global{
+            out.push(Instr::PopFrame(func.ret));
+        }
 
         return code_start;
     }
