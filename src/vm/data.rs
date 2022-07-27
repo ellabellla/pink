@@ -164,6 +164,11 @@ impl Matrix {
         Matrix{memory: vec![0.0; width*height], width, height}
     }
 
+    #[wasm_bindgen(getter)]
+    pub fn memory(&self) -> Vec<f64> {
+        self.memory.clone()
+    }
+
     pub fn get(&self, x:usize, y:usize) -> Option<f64> {
         if x >= self.width || y >= self.height {
             None
