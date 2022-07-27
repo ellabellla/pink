@@ -188,6 +188,9 @@ pub enum Instr {
     Pop,
     Duplicate,
 
+    PrintLn(Reference),
+    PrintLnString(String),
+
     GetMatrix(Reference, Reference),
     SetMatrix(Reference, Reference, Reference),
     GetFlatMatrix(Reference),
@@ -270,6 +273,8 @@ impl Instr {
             "PUSH" => Ok(Instr::Push(Reference::from_str(chars)?)),
             "POPX" => Ok(Instr::Pop),
             "DUPX" => Ok(Instr::Duplicate),
+            "PRLN" => Ok(Instr::PrintLn(Reference::from_str(chars)?)),
+            "PRSL" => Ok(Instr::PrintLnString(parse_string(chars)?)),
             "GETM" => Ok(Instr::GetMatrix(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "SETM" => Ok(Instr::SetMatrix(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "GTFM" => Ok(Instr::GetFlatMatrix(Reference::from_str(chars)?)),
@@ -334,6 +339,8 @@ impl ToString for Instr {
             Instr::Push(a) => format!("PUSH {}", a.to_string()),
             Instr::Pop => "POPX".to_string(),
             Instr::Duplicate => "DUPX".to_string(),
+            Instr::PrintLn(a) => format!("PRLN {}", a.to_string()),
+            Instr::PrintLnString(a) => format!("PRSL {}", a.to_string()),
             Instr::GetMatrix(a,  b) => format!("GETM {} {}", a.to_string(), b.to_string()),
             Instr::SetMatrix(a,  b, c) => format!("SETM {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::GetFlatMatrix(a) => format!("GTFM {}", a.to_string()),
@@ -461,6 +468,34 @@ pub fn parse_usize(chars: &mut Peekable<Chars>) -> Result<usize, InstrError>{
     }
 }
 
+pub fn parse_string(chars: &mut Peekable<Chars>) -> Result<String, InstrError>{
+    while let Some(c) = chars.peek() {
+        if *c == ' ' {
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    let mut data = Vec::new();
+
+    if let Some(c) = chars.peek() {
+        if *c == '"' {
+            chars.next();
+            while let Some(c) = chars.peek() {
+                if *c == '"' {
+                    chars.next();
+                    break;
+                } else {
+                    data.push(*c);
+                    chars.next();
+                }
+            }
+            return Ok(data.iter().collect())
+        }
+    } 
+
+    Err(InstrError::new("couldn't parse string"))
+}
 
 
 mod instr_ops {
@@ -524,6 +559,11 @@ mod instr_ops {
 
     pub fn conditional(a: f64, b: f64, c: f64, _vm: &mut VM) -> Result<Option<f64>, InstrError>{
         Ok(Some(if a != 0.0 { b } else { c }))
+    }
+
+    pub fn println(a: f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        vm.extern_println.println_num(a);
+        Ok(None)
     }
 
     pub fn get_matrix(b:  f64, c:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -672,6 +712,12 @@ mod instr_ops {
 
     }
 }
+
+pub trait ExternPrintLn {
+    fn println_num(&self, msg: f64);
+    fn println_str(&self, msg: &str);
+}
+
 pub struct VM {
     globals: Vec<Reference>,
     matrix: Box<Matrix>,
@@ -680,11 +726,12 @@ pub struct VM {
     instrs: Vec<Instr>,
     instr_pointer: usize,
     heap: HashMap<usize, Reference>,
+    extern_println: Box<dyn ExternPrintLn>,
 }
 
 impl VM {
 
-    pub fn new(matrix_size: (usize, usize), globals_capacity: usize, stack_capacity: usize, instrs: Vec<Instr>, instr_pointer: usize)-> VM {
+    pub fn new(matrix_size: (usize, usize), globals_capacity: usize, stack_capacity: usize, instrs: Vec<Instr>, instr_pointer: usize, extern_println: Box<dyn ExternPrintLn>)-> VM {
         VM { 
             globals: vec![Reference::None; globals_capacity], 
             matrix: Box::new(Matrix::new(matrix_size.0, matrix_size.1)),
@@ -693,6 +740,7 @@ impl VM {
             instrs: instrs, 
             instr_pointer,
             heap: HashMap::new(),
+            extern_println,
         }
     }
 
@@ -740,6 +788,8 @@ impl VM {
                         Err(InstrError::new("stack is empty"))
                     }
                 },
+                Instr::PrintLn(a) => self.eval_unary_op(a, &instr_ops::println),
+                Instr::PrintLnString(a) => {self.extern_println.println_str(&a); Ok(None)},
                 Instr::GetMatrix(a, b) => self.eval_binary_op(a, b, &instr_ops::get_matrix),
                 Instr::SetMatrix(a, b, c) => self.eval_trinary_op(a, b, c, &instr_ops::set_matrix),
                 Instr::GetFlatMatrix(a) => self.eval_unary_op(a, &instr_ops::get_flat_matrix),
