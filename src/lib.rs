@@ -21,15 +21,26 @@ extern "C" {
 #[wasm_bindgen]
 pub struct Compiled {
     asm: String,
+    pretty_asm: String,
     start: usize,
     globals: usize,
 }
 
 #[wasm_bindgen]
 impl Compiled {
+    #[wasm_bindgen(constructor)]
+    pub fn new(asm: String, pretty_asm: String, start: usize, globals: usize) -> Compiled {
+        Compiled { asm, pretty_asm, start, globals }
+    }
+
     #[wasm_bindgen(getter)]
     pub fn asm(&self) -> String {
         self.asm.to_string()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn pretty_asm(&self) -> String {
+        self.pretty_asm.to_string()
     }
 
     #[wasm_bindgen(getter)]
@@ -52,15 +63,16 @@ pub fn compile(input: &str) -> Result<Compiled, String> {
     let code = Code::new(&mut tree).map_err(|err| err.to_string())?;
 
     let (globals, start, instrs) = code.to_instrs();
-    let asm = Code::from_instr_to_string((globals, start, instrs), false);
+    let pretty_asm = Code::from_instr_to_string(&instrs, true);
+    let asm = Code::from_instr_to_string(&instrs, false);
 
-    Ok(Compiled{globals, start, asm})
+    Ok(Compiled{globals, start, asm, pretty_asm})
 }
 
 #[wasm_bindgen]
-pub fn run(program: Compiled) -> Result<Matrix, String> {
+pub fn run(program: Compiled, width: usize, height: usize) -> Result<Matrix, String> {
     let instrs = Code::from_string_to_instr(&program.asm).map_err(|err| err.to_string())?;
-    let mut vm = VM::new((500, 500), program.globals, 100, instrs, program.start);
+    let mut vm = VM::new((width, height), program.globals, 100, instrs, program.start);
     vm.run().map_err(|err| err.to_string())?;
     let matrix = *vm.get_matrix();
 
