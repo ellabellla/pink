@@ -1,16 +1,32 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <title>hello-wasm example</title>
-  </head>
-  <body>
-    <script type="module">
-      import init, {compile} from "../pkg/pink.js";
-      init()
-        .then(() => {
-            compile("+ - * / = += -= -> -*");
-        });
-    </script>
-  </body>
+    <head>
+        <meta charset="utf-8">
+        <title>hello-wasm example</title>
+        <link rel="stylesheet" href="css/reset.css">
+        <link rel="stylesheet" href="css/style.css">
+    </head>
+    <body>
+        <main>
+            <section id="code-section">
+                <textarea id="code" rows="30"></textarea>
+                <button id="compile-button">Compile</button>
+            </section>
+            <section id="asm-section">
+                <textarea id="pretty-asm" rows="30" readonly></textarea>
+                <textarea id="asm" rows="30" readonly hidden></textarea>
+                <button id="run-button">run</button>
+                Start: <a id="asm-start">0</a>
+                Globals: <a id="asm-globals">0</a>
+            </section>
+            <section id="output-section">
+                <canvas id="output-canvas" width="250" height="250"></canvas>
+                <div id="output-console">
+
+                </div>
+            </section>
+        </main>
+
+        <script type="module" src="js/index.js"></script>
+    </body>
 </html>
