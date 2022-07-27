@@ -277,12 +277,8 @@ impl Code {
     }
 
 
-    pub fn from_instr_to_string(instrs: (usize, usize, Vec<Instr>), pretty: bool) -> String {
-        let (globals, start, instrs) = instrs;
+    pub fn from_instr_to_string(instrs: &Vec<Instr>, pretty: bool) -> String {
         let mut out = vec![];
-        if pretty {
-            out = format!("start index: {}\nglobals: {}\n", start, globals).chars().collect();
-        }
         let indent_size = instrs.len().to_string().len() + 1;
         for (i, instr) in instrs.iter().enumerate() {
             if pretty {
@@ -302,8 +298,8 @@ impl Code {
 
 impl ToString for Code {
     fn to_string(&self) -> String {
-        let instrs = self.to_instrs();
-        Code::from_instr_to_string(instrs, false)
+        let (_, _, instrs) = self.to_instrs();
+        Code::from_instr_to_string(&instrs, false)
     }
 }
 
@@ -953,8 +949,8 @@ mod tests {
 
         match code {
             Ok(code) => {
-                let instrs = code.to_instrs();
-                println!("{}", Code::from_instr_to_string(instrs, true));
+                let (globals, start, instrs) = code.to_instrs();
+                println!("Start index: {}\nGlobals: {}\n{}", start, globals, Code::from_instr_to_string(&instrs, true));
             },
             Err(err) => panic!("{}", err.to_string())
         }
