@@ -48,7 +48,7 @@ init()
                 ctx.putImageData(image, 0, 0);
                 ctx.imageSmootingEnabled = false;
                 ctx.globalCompositeOperation = "copy";
-                ctx.drawImage(outputCanvas, 0, 0, 3, 4, 0, 0, width, height);
+                ctx.drawImage(outputCanvas, 0, 0, width, height);
             } catch(err) {
                 console.log(err);
             }
