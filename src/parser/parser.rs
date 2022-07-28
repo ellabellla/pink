@@ -226,15 +226,43 @@ fn parse_number(parser: &mut Parser) ->  Result<Box<ASTNode>, ParseError> {
 
 fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    Ok(Box::new(ASTNode::new(ASTNodeType::Reference(
-        if let Ok(found_token) =  is_next_continue!(parser.tokenizer, Token::Pop) {
-            found_token
-        } else if let Ok(found_token) = is_next_continue!(parser.tokenizer, Token::Peek) {
-            found_token
+    let next = match parser.tokenizer.next() {
+        Some(token) => token,
+        None => return create_parse_error!(parser.tokenizer, "expected a reference"),
+    };
+    if let Token::Identifier(ident) = next {
+        if let Ok(_) = is_next_continue!(parser.tokenizer, Token::Call) {
+            let mut children = vec![parse_expression(parser)?];
+            loop {
+                if is_next_continue!(parser.tokenizer, Token::Separate).is_err() {
+                    if is_next_continue!(parser.tokenizer, Token::Call).is_ok() {
+                        break;
+                    } else {
+                        parser.tokenizer.seek(fallback);
+                        return create_parse_error!(parser.tokenizer, "expected close of call")
+                    }
+                }
+
+                children.push(parse_expression(parser)?);
+
+                if is_next_continue!(parser.tokenizer, Token::Call).is_ok() {
+                    break;
+                }
+            }
+            Ok(Box::new(ASTNode::new(ASTNodeType::Call(ident), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else {
-            Token::Identifier(get_next!(parser.tokenizer, fallback, Token::Identifier(ident))?)
+            Ok(Box::new(ASTNode::new(ASTNodeType::Reference(Token::Identifier(ident)), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
         }
-    ), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+    } else {
+        Ok(Box::new(ASTNode::new(ASTNodeType::Reference(
+            if matches!(next, Token::Pop) || matches!(next, Token::Peek) {
+                next
+            } else {
+                parser.tokenizer.seek(fallback);
+                return create_parse_error!(parser.tokenizer, "expected reference")
+            }
+        ), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+    }
 }
 
 fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
@@ -788,6 +816,12 @@ mod tests {
             ", 
             "(((Number(10.0))Statement(Throw))(((Number(10.0))Operator(Not))Statement(Throw))((Number(1.0))Statement(Throw))((Number(0.0))Statement(Throw))Root)"
         );
+    }
+
+    #[test]
+    fn test_call() {
+        assert_parse_eq!(r"sin|10|;", "((((Number(10.0))Call(\"sin\"))Statement(Throw))Root)");
+        assert_parse_eq!(r"pow|10;2|;", "((((Number(10.0))(Number(2.0))Call(\"pow\"))Statement(Throw))Root)");
     }
 
     #[test]

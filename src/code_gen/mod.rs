@@ -1,6 +1,6 @@
 use std::{fmt::{self}, collections::HashMap, vec};
 
-use crate::{lexer::{Token}, parser::{AbstractSyntaxTree, ASTNode, Annotation, ASTNodeType, StatementType}, vm::{Instr, Reference, InstrError}};
+use crate::{lexer::{Token}, parser::{AbstractSyntaxTree, ASTNode, Annotation, ASTNodeType, StatementType}, vm::{Instr, Reference, InstrError, Call, create_call_map}};
 
 
 #[macro_use] 
@@ -97,11 +97,12 @@ struct Naming {
     tuple_id_front: usize,
     label_id_front: usize,
     heap_id_front: usize,
+    call_map: HashMap<String, (usize, &'static dyn Call)>,
 }
 
 impl Naming {
     pub fn new() -> Naming {
-        Naming { func_id_front: 0, tuple_id_front: 0, label_id_front: 0, heap_id_front: 0 }
+        Naming { func_id_front: 0, tuple_id_front: 0, label_id_front: 0, heap_id_front: 0, call_map: create_call_map() }
     }
 
     pub fn new_func_id(&mut self) -> usize {
@@ -317,6 +318,7 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
         ASTNodeType::ExpressionList(_) => generate_expression_list(func, naming, node),
         ASTNodeType::Indexed => generate_indexed(func, naming, node),
         ASTNodeType::Reference(_) => generate_reference(func, naming, node),
+        ASTNodeType::Call(_) => generate_call(func, naming, node),
         ASTNodeType::Number(num) => {
             func.code.push(Line::Instr(Instr::Push(Reference::Literal(num))));
             Ok(Reference::Stack)
@@ -679,6 +681,31 @@ fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode
     Ok(Reference::Stack)
 }
 
+fn generate_call(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
+    let ident = if let ASTNodeType::Call(ident) = &node.node_type {
+        ident
+    } else {
+        return Err(GenerationError::new("couldn't generate call"))
+    };
+
+    let id = if let Some((id, _)) = naming.call_map.get(ident) {
+        *id
+    } else {
+        return Err(GenerationError::new("call not found"))
+    };
+
+    for i in 0..node.children.len() {
+        let reference = generate_expression(func, naming, &node.children[i])?;
+        if !matches!(reference, Reference::Stack) && !matches!(reference, Reference::StackPeek) {
+            func.code.push(Line::Instr(Instr::Push(reference)));
+        }
+    }
+
+    func.code.push(Line::Instr(Instr::Call(id)));
+
+    Ok(Reference::Stack)
+}
+
 fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     let reference = if let ASTNodeType::Reference(reference) = &node.node_type {
         reference
@@ -942,8 +969,7 @@ mod tests {
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            fac:(x:0) -> [x=0 ? (1;x*(x-1) -> fac)];
-            (10) -> fac,
+            sin|@|;
         ")).unwrap();
 
 

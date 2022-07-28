@@ -11,6 +11,7 @@ token_lookup!(
     ("@@", Peek),
     ("@", Pop),
     ("#", Matrix),
+    ("|", Call)
 
     ("?", If),
     ("<-", Into),

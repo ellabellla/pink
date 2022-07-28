@@ -21,6 +21,8 @@ pub enum ASTNodeType {
     ForEach,
     Into,
 
+    Call(String),
+
     ExpressionList(usize),
     Push,
     Throw,

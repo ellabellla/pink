@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt};
 
 use crate::parser::{AbstractSyntaxTree, ASTNode, ASTNodeType, Annotation};
 use crate::lexer::Token;
+use crate::vm::{Call, create_call_map};
 
 #[macro_use] 
 mod macros {
@@ -191,12 +192,13 @@ impl Scope {
 pub struct SemanticData{
     stack: Vec<Scope>,
     globals: Scope,
+    call_map: HashMap<String, (usize, &'static dyn Call)>,
 }
 
 
 impl SemanticData {
     pub fn new() -> SemanticData {
-        SemanticData { stack: vec![], globals: Scope::new() }
+        SemanticData { stack: vec![], globals: Scope::new(), call_map: create_call_map() }
     }
 }
 
@@ -362,6 +364,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Into => validate_extended_exec(true, data, node),
         ASTNodeType::ExpressionList(_) => validate_expression_list(data, node),
         ASTNodeType::Indexed => validate_indexed(data, node),
+        ASTNodeType::Call(_) => validate_call(data, node),
         ASTNodeType::Reference(_) => {
             let var_type = VariableType::node_to_type(data, node);
             if matches!(var_type, Ok(VariableType::Tuple)) ||
@@ -596,6 +599,32 @@ fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<
         }
     }
     
+    Ok(())
+}
+
+fn validate_call(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
+    let ident = if let ASTNodeType::Call(ident) = &node.node_type {
+        ident
+    } else {
+        create_semantic_error!(node, "expected call")?
+    };
+
+    let (_, call) = if let Some(call) = data.call_map.get(ident) {
+        call
+    } else {
+        create_semantic_error!(node, "call type could not be found")?
+    };
+
+    let argc = call.argc();
+
+    if node.children.len() != argc {
+        create_semantic_error!(node, "call was passed the wrong number of arguments")?
+    }
+
+    for i in 0..node.children.len() {
+        validate_expression(data, &mut node.children[i], false)?;
+    }
+
     Ok(())
 }
 

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, str::{Chars}, fmt, iter::Peekable};
+use std::{collections::{HashMap}, str::{Chars}, fmt, iter::Peekable};
 
-use super::{Stack, Data, Matrix};
+use super::{Stack, Data, Matrix, CALLS};
 
 #[derive(Debug)]
 pub struct InstrError {
@@ -239,6 +239,8 @@ pub enum Instr {
     Into(Reference, Reference),
     ForEach(Reference, Reference),    
     ForEachRange(Reference, Reference, Reference, Reference),    
+
+    Call(usize),
 }
 
 
@@ -316,6 +318,7 @@ impl Instr {
             "INTO" => Ok(Instr::Into(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "FREH" => Ok(Instr::ForEach(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "FRRG" => Ok(Instr::ForEachRange(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
+            "CALL" => Ok(Instr::Call(parse_usize(chars)?)),
             _ => Err(InstrError::new("couldn't parse instr"))
         }
 
@@ -382,6 +385,7 @@ impl ToString for Instr {
             Instr::Into(a, b) => format!("INTO {} {}", a.to_string(), b.to_string()),
             Instr::ForEach(a, b) => format!("FREH {} {}", a.to_string(), b.to_string()),
             Instr::ForEachRange(a, b, c, d) => format!("FRRG {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
+            Instr::Call(a) => format!("CALL {}", a.to_string()),
         }
     }
 }
@@ -499,7 +503,6 @@ pub fn parse_string(chars: &mut Peekable<Chars>) -> Result<String, InstrError>{
 
     Err(InstrError::new("couldn't parse string"))
 }
-
 
 mod instr_ops {
     use crate::vm::{Data};
@@ -725,11 +728,11 @@ pub struct VM {
     globals: Vec<Reference>,
     matrix: Box<Matrix>,
     tuples: HashMap<usize, Vec<Reference>>,
-    stack: Stack,
+    pub stack: Stack,
     instrs: Vec<Instr>,
     instr_pointer: usize,
     heap: HashMap<usize, Reference>,
-    extern_println: Box<dyn ExternPrintLn>,
+    pub extern_println: Box<dyn ExternPrintLn>,
 }
 
 impl VM {
@@ -1215,6 +1218,15 @@ impl VM {
                         Ok(None)
                     } else {
                         Err(InstrError::new("first ref must be a executable"))
+                    }
+                },
+                Instr::Call(a) => {
+                    if let Some(call) = CALLS.get(a) {
+                        let reference = call.call(self)?;
+                        self.stack.push(Data::Reference(reference));
+                        Ok(None)
+                    } else {
+                        Err(InstrError::new("couldn't resolve call"))
                     }
                 }
             };
@@ -1830,6 +1842,13 @@ mod tests {
             
         {
             let instr = Instr::ForEachRange(Reference::None, Reference::None, Reference::None, Reference::None);
+
+            let str = instr.to_string();
+            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
+        }
+            
+        {
+            let instr = Instr::Call(0);
 
             let str = instr.to_string();
             assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
