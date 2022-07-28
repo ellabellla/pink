@@ -134,6 +134,7 @@ impl VariableType {
             ASTNodeType::Indexed => Ok(VariableType::Number),
             ASTNodeType::Range => Ok(VariableType::Tuple),
             ASTNodeType::RangeComplex => Ok(VariableType::Tuple),
+            ASTNodeType::Call(_) => Ok(VariableType::Number),
             ASTNodeType::Reference(ref_type) => match ref_type {
                 Token::Identifier(ident) => {
                     if let Some(variable) = data.globals.variables.get(ident) {
@@ -379,7 +380,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
 }
 
 fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
-    if node.children.len() < 2 {
+    if matches!(node.node_type, ASTNodeType::ExpressionList(_)) {
         return create_semantic_error!(node, "expected exec")
     }
     data.stack.push(Scope::new());
