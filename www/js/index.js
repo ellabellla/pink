@@ -30,6 +30,9 @@ init()
 
         runButton.addEventListener("click", (event) => {
             try {
+                let outputConsole = document.getElementById("output-console");
+                outputConsole.innerHTML = "";
+
                 const width = outputCanvas.width;
                 const height = outputCanvas.height;
                 const matrix = run(
