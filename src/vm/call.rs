@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{Reference, InstrError, VM, Data};
+use super::{Reference, InstrError, VM};
 
 
 pub trait Call {
@@ -20,7 +20,7 @@ impl Call for SinCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::sin(num)))
         } else {
@@ -39,7 +39,7 @@ impl Call for CosCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::cos(num)))
         } else {
@@ -59,7 +59,7 @@ impl Call for TanCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::tan(num)))
         } else {
@@ -79,7 +79,7 @@ impl Call for ABSCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::abs(num)))
         } else {
@@ -99,7 +99,7 @@ impl Call for FloorCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::floor(num)))
         } else {
@@ -119,7 +119,7 @@ impl Call for CeilCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::ceil(num)))
         } else {
@@ -140,14 +140,33 @@ impl Call for PowCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let a = reference.to_number(0, 0, vm)?;
-            if let Some(Data::Reference(reference)) = vm.stack.pop() {
+            if let Some(reference) = vm.expr_stack.pop() {
                 let b = reference.to_number(0, 0, vm)?;
-                Ok(Reference::Literal(f64::powf(a, b)))
+                Ok(Reference::Literal(f64::powf(b, a)))
             } else {
                 Err(InstrError::new("couldn't pop call arg from stack"))
             }
+        } else {
+            Err(InstrError::new("couldn't pop call arg from stack"))
+        }
+    }
+}
+pub struct SqrtCall{}
+impl Call for SqrtCall {
+    fn name(&self) -> String {
+        "sqrt".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        1
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        if let Some(reference) = vm.expr_stack.pop() {
+            let a = reference.to_number(0, 0, vm)?;
+            Ok(Reference::Literal(f64::sqrt(a)))
         } else {
             Err(InstrError::new("couldn't pop call arg from stack"))
         }
@@ -165,7 +184,7 @@ impl Call for DebugCall {
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
-        if let Some(Data::Reference(reference)) = vm.stack.pop() {
+        if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             vm.extern_println.println_num(num);
             Ok(Reference::Literal(num))
@@ -175,7 +194,7 @@ impl Call for DebugCall {
     }
 }
 
-pub const CALLS: [&dyn Call; 7] = [&SinCall{}, &CosCall{}, &TanCall{}, &FloorCall{}, &CeilCall{}, &PowCall{}, &DebugCall{}];
+pub const CALLS: [&dyn Call; 8] = [&SinCall{}, &CosCall{}, &TanCall{}, &FloorCall{}, &CeilCall{}, &PowCall{}, &SqrtCall{}, &DebugCall{}];
 
 pub fn create_call_map() -> HashMap<String, (usize, &'static dyn Call)> {
     let mut map = HashMap::new();

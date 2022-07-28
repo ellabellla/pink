@@ -75,8 +75,9 @@ impl Stack {
                 while self.stack.len() - self.frame_index - 1 < args {
                     self.push(Data::Reference(Reference::None));
                 }
+                let prev_frame_index = self.frame_index;
                 self.frame_index = self.stack.len();
-                self.stack.push(Data::Frame(args, self.frame_index, instr_pointer));
+                self.stack.push(Data::Frame(args, prev_frame_index, instr_pointer));
             },
         }
     }
@@ -107,10 +108,11 @@ impl Stack {
             if let Some(last) = self.stack.pop() {
                 match last {
                     Data::Reference(_) => (),
-                    Data::Frame(argc, _, instr_pointer) => {
+                    Data::Frame(argc, prev_frame_index, instr_pointer) => {
                         for _ in 0..argc {
                             self.stack.pop();
                         }
+                        self.frame_index = prev_frame_index;
 
                         return Some(instr_pointer)
                     },
@@ -150,7 +152,62 @@ impl Stack {
     }
 }
 
+pub struct ExprStack {
+    stack: Vec<Reference>,
+    clear_stack: Vec<usize>,
+}
 
+impl ExprStack {
+    pub fn new(capacity: usize) -> ExprStack {
+        let stack =  Vec::<Reference>::with_capacity(capacity);
+        let mut clear_stack =  Vec::<usize>::with_capacity(capacity);
+        clear_stack.push(0);
+        ExprStack { stack,  clear_stack}
+    } 
+
+    pub fn push(&mut self, reference: Reference) {
+        self.stack.push(reference);
+    }
+
+    pub fn push_expr(&mut self)  {
+        self.clear_stack.push(self.stack.len());
+    }
+
+    pub fn peek(&mut self) -> Option<Reference> {
+        if let Some(last) = self.clear_stack.last() {
+            if self.stack.len() > *last {
+                self.stack.last().map(|r| r.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<Reference> {
+        if let Some(last) = self.clear_stack.last() {
+            if self.stack.len() > *last {
+                self.stack.pop()
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn pop_expr(&mut self) {
+        if let Some(last) = self.clear_stack.last() {
+            while  self.stack.len() > *last {
+                self.stack.pop();
+            }
+            if self.clear_stack.len() > 1 {
+                self.clear_stack.pop();
+            }
+        }
+    }
+}
 #[wasm_bindgen]
 pub struct Matrix {
     memory: Vec<f64>,
@@ -165,18 +222,16 @@ impl Matrix {
     }
 
     fn float_to_scalar(num: f64) -> f64 {
-        const MIN:f64 = 0.0;
-        const MAX:f64 = 1.0;
-
-        let mut num = num;
-        if num < MIN {
-            num = MAX - (MIN - num) % (MAX - MIN);
+        if num == 0.0 {
+            num
+        } else {
+            let num = num % 1.0;
+            if num ==0.0 {
+                1.0
+            } else {
+                num
+            }
         }
-        else if num > MAX {
-            num = MIN + (num - MIN) % (MAX - MIN);
-        }
-
-        num
     }
 
     #[wasm_bindgen(getter)]

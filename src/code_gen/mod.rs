@@ -75,11 +75,14 @@ impl fmt::Display for GenerationError {
     }
 }
 
+#[derive(Debug)]
 pub enum JumpType {
     Label(usize),
     #[allow(dead_code)]
     Function(usize),
 }
+
+#[derive(Debug)]
 pub enum Line {
     #[allow(dead_code)]
     Comment(String),
@@ -230,6 +233,7 @@ impl Code {
                         Instr::Xor(_, a) => Instr::Xor(Reference::Executable(*argc, *index), *a),
                         Instr::Conditional(_, _a, _b) => todo!(),
                         Instr::Push(_) => Instr::Push(Reference::Executable(*argc, *index)),
+                        Instr::PushExpr(_) => Instr::PushExpr(Reference::Executable(*argc, *index)),
                         Instr::SetArg(a, _) => Instr::SetArg(*a, Reference::Executable(*argc, *index)),
                         Instr::SetGlobal(a, _) => Instr::SetGlobal(*a, Reference::Executable(*argc, *index)),
                         Instr::ExecRef(_) => Instr::ExecRef(Reference::Executable(*argc, *index)),
@@ -320,8 +324,8 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
         ASTNodeType::Reference(_) => generate_reference(func, naming, node),
         ASTNodeType::Call(_) => generate_call(func, naming, node),
         ASTNodeType::Number(num) => {
-            func.code.push(Line::Instr(Instr::Push(Reference::Literal(num))));
-            Ok(Reference::Stack)
+            func.code.push(Line::Instr(Instr::PushExpr(Reference::Literal(num))));
+            Ok(Reference::StackExpr)
         },
         _ => Err(GenerationError::new("invalid value in expression"))
     }
@@ -365,20 +369,20 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
             let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
             if inner_func.argc < argc {
                 for _ in 0..argc-inner_func.argc {
-                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
+                    inner_func.code.push(Line::Instr(Instr::PushExpr(Reference::None)));
                 }
             }
             inner_func.code.push(Line::Instr(Instr::ExecRef(Reference::Global(*id))));
-            inner_func.ret = Reference::Stack;
+            inner_func.ret = Reference::StackExpr;
         } else if let Ok(id) = get_annotation!(node.children[1], "", Annotation::Id(_id)) {
             let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
             if inner_func.argc < argc {
                 for _ in 0..argc-inner_func.argc {
-                    inner_func.code.push(Line::Instr(Instr::Push(Reference::None)));
+                    inner_func.code.push(Line::Instr(Instr::PushExpr(Reference::None)));
                 }
             }
             inner_func.code.push(Line::Instr(Instr::ExecRef(Reference::Argument(*id))));
-            inner_func.ret = Reference::Stack;
+            inner_func.ret = Reference::StackExpr;
         } else if matches!(node.children[1].node_type, ASTNodeType::ExpressionList(_)){
             let reference = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
             inner_func.ret = reference;
@@ -403,11 +407,8 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
             }
             func.code.push(Line::Instr(Instr::ExecRef(Reference::Argument(*id))));
         } else if matches!(node.children[1].node_type, ASTNodeType::ExpressionList(_)){
-            let mut inner_func = Function::new(outer_argc, naming.new_func_id());
-            let reference = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
-            inner_func.ret = reference;
-            func.code.push(Line::Call(inner_func.id));
-            func.funcs.insert(inner_func.id, inner_func);
+            let reference = generate_expression_list(func, naming, &node.children[1])?;
+            func.ret = reference;
         }
         Ok(func.id)
     }
@@ -463,14 +464,14 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
         } else {
             let (start, end, step) = match &node.children[0].node_type {
                 ASTNodeType::Range => {
-                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
                     let end = generate_expression(func, naming, &node.children[0].children[1])?;
+                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
                     (start, end, Reference::Literal(1.0))
                 },
                 ASTNodeType::RangeComplex => {
-                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
-                    let end = generate_expression(func, naming, &node.children[0].children[1])?;
                     let step = generate_expression(func, naming, &node.children[0].children[2])?;
+                    let end = generate_expression(func, naming, &node.children[0].children[1])?;
+                    let start = generate_expression(func, naming, &node.children[0].children[0])?;
                     (start, end, step)
                 },
                 _ => return Err(GenerationError::new("invalid lhs for extended exec")),
@@ -560,7 +561,7 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
             } else {
                 let reference = generate_expression(func, naming, &node.children[i])?;
                 
-                if !matches!(reference, Reference::None) && !matches!(reference, Reference::Stack) {
+                if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                     func.code.push(Line::Instr(Instr::Push(reference)));
                 }
                 if is_ref {
@@ -582,7 +583,7 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
             } else {
                 let reference = generate_expression(&mut inner_func, naming, &node.children[i])?;
     
-                if !matches!(reference, Reference::None) && !matches!(reference, Reference::Stack) {
+                if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                     inner_func.code.push(Line::Instr(Instr::Push(reference)));
                 }
                 if is_ref {
@@ -621,33 +622,32 @@ fn generate_tuple(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
 
 fn generate_expression_list(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     if let ASTNodeType::ExpressionList(_) = node.node_type {
-        let mut prev_reference = Reference::None;
-        for i in 0..node.children.len() {
-            if i % 2 != 0 {
-                match &node.children[i].node_type {
-                    ASTNodeType::Throw => {
-                        if let Reference::Stack = prev_reference {
-                            func.code.push(Line::Instr(Instr::Pop))
-                        }
-                        prev_reference = Reference::None;
-                    },
-                    ASTNodeType::Push => {
-                        if !matches!(prev_reference, Reference::Stack) && !matches!(prev_reference, Reference::None) {
-                            func.code.push(Line::Instr(Instr::Push(prev_reference)));
-                        }
-                    },
-                    _ => return Err(GenerationError::new("expected terminator to expression"))
+        for i in (0..node.children.len()).step_by(2) {
+            func.code.push(Line::Instr(Instr::StartExpr)); 
+            let reference = generate_definition(func, naming, &node.children[i])
+            .or_else(|_| generate_expression(func, naming, &node.children[i]) )?;
+
+            if i+1 >= node.children.len() {
+                if !matches!(reference, Reference::Stack) && !matches!(reference, Reference::StackPeek) {
+                    func.code.push(Line::Instr(Instr::Push(reference)));
                 }
-            } else {
-                prev_reference = generate_definition(func, naming, &node.children[i])
-                .or_else(|_| generate_expression(func, naming, &node.children[i]) )?;
+                func.code.push(Line::Instr(Instr::EndExpr));   
+                break;
+            }
+            
+            match &node.children[i+1].node_type {
+                ASTNodeType::Throw => {
+                    func.code.push(Line::Instr(Instr::EndExpr));      
+                },
+                ASTNodeType::Push => {   
+                    if !matches!(reference, Reference::Stack) && !matches!(reference, Reference::StackPeek) {
+                        func.code.push(Line::Instr(Instr::Push(reference)));
+                    }
+                    func.code.push(Line::Instr(Instr::EndExpr));   
+                },
+                _ => return Err(GenerationError::new("expected terminator to expression"))
             }
         }
-        if matches!(prev_reference, Reference::None) {
-            return Ok(Reference::None)
-        } else if !matches!(prev_reference, Reference::Stack) {
-            func.code.push(Line::Instr(Instr::Push(prev_reference)));
-        } 
         Ok(Reference::Stack)
     } else {
         Err(GenerationError::new("expected an expression list"))
@@ -678,7 +678,7 @@ fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode
         _=> return Err(GenerationError::new("Expected index in indexed value"))
     }
 
-    Ok(Reference::Stack)
+    Ok(Reference::StackExpr)
 }
 
 fn generate_call(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
@@ -696,14 +696,14 @@ fn generate_call(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) 
 
     for i in 0..node.children.len() {
         let reference = generate_expression(func, naming, &node.children[i])?;
-        if !matches!(reference, Reference::Stack) && !matches!(reference, Reference::StackPeek) {
-            func.code.push(Line::Instr(Instr::Push(reference)));
+        if !matches!(reference, Reference::StackExpr) && !matches!(reference, Reference::StackPeekExpr) {
+            func.code.push(Line::Instr(Instr::PushExpr(reference)));
         }
     }
 
     func.code.push(Line::Instr(Instr::Call(id)));
 
-    Ok(Reference::Stack)
+    Ok(Reference::StackExpr)
 }
 
 fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
@@ -716,9 +716,13 @@ fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTN
     match &reference {
         Token::Peek => {
             func.code.push(Line::Instr(Instr::Duplicate));
-            Ok(Reference::Stack)
+            func.code.push(Line::Instr(Instr::PushExpr(Reference::Stack)));
+            Ok(Reference::StackExpr)
         },
-        Token::Pop => Ok(Reference::Stack),
+        Token::Pop => {
+            func.code.push(Line::Instr(Instr::PushExpr(Reference::Stack)));
+            Ok(Reference::StackExpr)
+        },
         Token::Matrix => Ok(Reference::Matrix),
         Token::Identifier(_) => {
             if let Ok(pull_through_id) = get_annotation!(node, "", Annotation::PullThrough(_id)) {
@@ -736,7 +740,7 @@ fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTN
 }
 
 fn generate_expression(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    match &node.node_type {
+    let res =  match &node.node_type {
         ASTNodeType::Operator(token) => {
             if matches!(token, Token::If) {
                 let cond = generate_expression(func, naming, &node.children[0])?;
@@ -745,18 +749,17 @@ fn generate_expression(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
 
                 func.code.push(Line::Jump(Instr::JumpEqual(0, cond, Reference::Literal(0.0)), JumpType::Label(false_outcome)));
                 let true_reference = generate_expression(func, naming, &node.children[1].children[0])?;
-                if !matches!(true_reference, Reference::Stack) && !matches!(true_reference, Reference::None) {
-                    func.code.push(Line::Instr(Instr::Push(true_reference)));
+                if !matches!(true_reference, Reference::StackExpr) && !matches!(true_reference, Reference::None) {
+                    func.code.push(Line::Instr(Instr::PushExpr(true_reference)));
                 }
                 func.code.push(Line::Jump(Instr::Jump(0), JumpType::Label(end)));
                 func.code.push(Line::Label(false_outcome));
                 let false_reference = generate_expression(func, naming, &node.children[1].children[2])?;
-                if !matches!(false_reference, Reference::Stack) && !matches!(false_reference, Reference::None) {
-                    func.code.push(Line::Instr(Instr::Push(false_reference)));
+                if !matches!(false_reference, Reference::StackExpr) && !matches!(false_reference, Reference::None) {
+                    func.code.push(Line::Instr(Instr::PushExpr(false_reference)));
                 }
                 func.code.push(Line::Label(end));
             } else {
-
                 let ref2 = generate_expression(func, naming, &node.children[1])?;
                 let ref1 = generate_expression(func, naming, &node.children[0])?;
                 match token {
@@ -799,10 +802,11 @@ fn generate_expression(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
                     _ => return Err(GenerationError::new("could not resolve operator"))
                 }
             }
-            Ok(Reference::Stack)
+            Ok(Reference::StackExpr)
         },
         _ => generate_value(func, naming, node)
-    }
+    };
+    res
 }
 
 fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
@@ -819,16 +823,16 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
             let func_id = generate_function(false, func, naming, &node.children[1])?;
             let function = func.funcs.get(&func_id).expect("function");
             let func_id = function.id;
-            func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
-            Reference::Stack
+            func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), func_id));
+            Reference::StackExpr
         } else if is_expression_list {
             let mut inner_func = Function::new(0, naming.new_func_id());
             let func_id = inner_func.id;
             let expression_list = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
             inner_func.ret = expression_list;
             func.funcs.insert(inner_func.id, inner_func);
-            func.code.push(Line::ExecRef(Instr::Push(Reference::None), func_id));
-            Reference::Stack
+            func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), func_id));
+            Reference::StackExpr
         } else {
             match &node.children[1].node_type {
                 ASTNodeType::Tuple(_) => {
@@ -851,19 +855,19 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
         match node.node_type {
             ASTNodeType::Set(Token::AddAndSet) => {
                 func.code.push(Line::Instr(Instr::Add(lhs, rhs)));
-                rhs = Reference::Stack;
+                rhs = Reference::StackExpr;
             },
             ASTNodeType::Set(Token::SubtractAndSet) => {
                 func.code.push(Line::Instr(Instr::Subtract(lhs, rhs)));
-                rhs = Reference::Stack;
+                rhs = Reference::StackExpr;
             },
             ASTNodeType::Set(Token::MultiplyAndSet) => {
                 func.code.push(Line::Instr(Instr::Multiply(lhs, rhs)));
-                rhs = Reference::Stack;
+                rhs = Reference::StackExpr;
             },
             ASTNodeType::Set(Token::DivideAndSet) => {
                 func.code.push(Line::Instr(Instr::Divide(lhs, rhs)));
-                rhs = Reference::Stack;
+                rhs = Reference::StackExpr;
             },
             _ => ()
         }
@@ -945,14 +949,20 @@ fn generate_statement(func: &mut Function, naming: &mut Naming, node: &Box<ASTNo
         return Ok(())
     }
     
-    generate_expression(func, naming, &node.children[0])?;
+    func.code.push(Line::Instr(Instr::StartExpr));
+    let reference = generate_expression(func, naming, &node.children[0])?;
 
     if let ASTNodeType::Statement(statement_type) = &node.node_type {
         match statement_type {
-            StatementType::Push => (),
-            StatementType::Throw => func.code.push(Line::Instr(Instr::Pop)),
+            StatementType::Push => {
+                if !matches!(reference, Reference::Stack) && !matches!(reference, Reference::StackPeek) {
+                    func.code.push(Line::Instr(Instr::Push(reference)));
+                }
+            },
+            StatementType::Throw => (),
         }
     }
+    func.code.push(Line::Instr(Instr::EndExpr));
     Ok(())
 }
 
@@ -962,14 +972,25 @@ mod tests {
 
     use super::Code;
     /*
-        fib:(x:0) -> [x=0 ? (1;x*(x-1) -> fib)];
-            (10) -> fib,
+        fac:(x:0) -> [x=0 ? (1;x*(x-1) -> fac)];
+            (10) -> fac,
+
+            centre: 250/2;
+        x:100;
+        y:10;
+        sqrt|pow|125-centre;2| + pow|125-centre;2||,
+        debug|@|;
+        {0;125} <* [@@, sqrt|pow|debug|@|-centre;2| + pow|debug|@|-centre;2||, debug|@|];
+        centre: 250/2;
+{0;125} <* [@@, sqrt|pow|debug|@|-centre;2| + pow|debug|@|-centre;2||, debug|@|];
+centre: 250/2;
+{0;125} <* [@@, sqrt|pow|@-centre;2| + pow|@-centre;2||, debug|@ < 100 ? (1;0)|];
     */
 
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            sin|@|;
+            (10;5) -> [@-@],
         ")).unwrap();
 
 

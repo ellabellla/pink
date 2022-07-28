@@ -1,6 +1,6 @@
 use std::{collections::{HashMap}, str::{Chars}, fmt, iter::Peekable};
 
-use super::{Stack, Data, Matrix, CALLS};
+use super::{Stack, Data, Matrix, CALLS, ExprStack};
 
 #[derive(Debug)]
 pub struct InstrError {
@@ -28,7 +28,9 @@ impl fmt::Display for InstrError {
 pub enum Reference {
     Executable(usize, usize),
     Stack,
+    StackExpr,
     StackPeek,
+    StackPeekExpr,
     Literal(f64),
     Global(usize),
     Argument(usize),
@@ -40,10 +42,44 @@ pub enum Reference {
 
 
 impl Reference {
+    pub fn resolve(&self, vm:  &mut VM) -> Result<Reference, InstrError> {
+        match self {
+            Reference::Stack => match vm.stack.pop().ok_or_else(|| InstrError::new("couldn't pop from stack"))? {
+                Data::Reference(reference) => reference.resolve(vm),
+                Data::Frame(_, _, _) => Err(InstrError::new("couldn't pop from stack"))
+            },
+            Reference::StackPeek => match vm.stack.peek().ok_or_else(|| InstrError::new("couldn't pop from stack"))? {
+                Data::Reference(reference) => reference.resolve(vm),
+                Data::Frame(_, _, _) => Err(InstrError::new("couldn't pop from stack"))
+            },
+            Reference::StackExpr => vm.expr_stack.pop().ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone().resolve(vm),
+            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone().resolve(vm),
+            Reference::Global(id) =>  {
+                let reference = vm.globals.get(*id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
+                reference.resolve(vm)
+            },
+            Reference::Argument(id) => {
+                let reference = vm.stack.get_arg(*id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
+                reference.resolve(vm)
+            },
+            Reference::Heap(id) => {
+                let reference = vm.heap.get(id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
+                reference.resolve(vm)
+            },
+            Reference::Matrix => return Ok(*self),
+            Reference::Tuple(_) => return Ok(*self),
+            Reference::None => return Ok(*self),
+            Reference::Literal(_) => return Ok(*self),
+            Reference::Executable(_, _) => return Ok(*self),
+        }
+    }
+
     pub fn to_number(&self, x: usize, y: usize, vm:  &mut VM) -> Result<f64, InstrError> {
         match self {
             Reference::Stack => vm.stack.pop().ok_or(InstrError::new("couldnt pop from stack")).and_then(|data| data.to_number(vm)),
             Reference::StackPeek => vm.stack.peek().ok_or(InstrError::new("couldnt peep from stack")).and_then(|data| data.to_number(vm)),
+            Reference::StackExpr => vm.expr_stack.pop().ok_or(InstrError::new("couldnt pop from expr stack"))?.clone().to_number(x,  y, vm),
+            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or(InstrError::new("couldnt peep from expr stack"))?.clone().to_number(x, y, vm),
             Reference::Global(index) => {
                 let reference = vm.globals.get(*index).ok_or(InstrError::new("couldnt get global"))?.clone();
                 reference.to_number(x, y, vm)
@@ -88,10 +124,21 @@ impl Reference {
                     if let Some(header) = chars.peek() {
                         if *header == '@' {
                             chars.next();
-                            return Ok(Reference::StackPeek)
+                            if let Some(header) = chars.peek() {
+                                if *header == 'E' {
+                                    chars.next();
+                                    return Ok(Reference::StackPeekExpr)
+                                } else {
+                                    return Ok(Reference::StackPeek)
+                                }
+                            } else {
+                                return Ok(Reference::StackPeek)
+                            }
+                        } else if *header == 'E' {
+                            chars.next();
+                            return Ok(Reference::StackExpr)
                         } else {
                             return Ok(Reference::Stack)
-
                         }
                     } else {
                         return Ok(Reference::Stack)
@@ -154,7 +201,9 @@ impl ToString for Reference {
         match self {
             Reference::None => String::from("_"),
             Reference::Stack => String::from("@"),
+            Reference::StackExpr => String::from("@E"),
             Reference::StackPeek => String::from("@@"),
+            Reference::StackPeekExpr => String::from("@@E"),
             Reference::Global(index) => String::from(format!("G{}", index)),
             Reference::Argument(index) => String::from(format!("A{}", index)),
             Reference::Heap(index) => String::from(format!("H{}", index)),
@@ -188,8 +237,13 @@ pub enum Instr {
     Conditional(Reference, Reference, Reference),
 
     Push(Reference),
+    PushExpr(Reference),
     Pop,
+    PopExpr,
     Duplicate,
+    DuplicateExpr,
+    StartExpr,
+    EndExpr,
 
     PrintLn(Reference),
     PrintLnString(String),
@@ -276,8 +330,13 @@ impl Instr {
             "XORX" => Ok(Instr::Xor(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "COND" => Ok(Instr::Conditional(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "PUSH" => Ok(Instr::Push(Reference::from_str(chars)?)),
-            "POPX" => Ok(Instr::Pop),
+            "PSHE" => Ok(Instr::PushExpr(Reference::from_str(chars)?)),
+            "POPE" => Ok(Instr::Pop),
+            "POPX" => Ok(Instr::PopExpr),
             "DUPX" => Ok(Instr::Duplicate),
+            "DUPE" => Ok(Instr::DuplicateExpr),
+            "STEX" => Ok(Instr::StartExpr),
+            "EDEX" => Ok(Instr::EndExpr),
             "PRLN" => Ok(Instr::PrintLn(Reference::from_str(chars)?)),
             "PRSL" => Ok(Instr::PrintLnString(parse_string(chars)?)),
             "GETM" => Ok(Instr::GetMatrix(Reference::from_str(chars)?, Reference::from_str(chars)?)),
@@ -343,8 +402,13 @@ impl ToString for Instr {
             Instr::Xor(a,  b) => format!("XORX {} {}", a.to_string(), b.to_string()),
             Instr::Conditional(a,  b, c) => format!("COND {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::Push(a) => format!("PUSH {}", a.to_string()),
+            Instr::PushExpr(a) => format!("PSHE {}", a.to_string()),
             Instr::Pop => "POPX".to_string(),
+            Instr::PopExpr => "POPE".to_string(),
             Instr::Duplicate => "DUPX".to_string(),
+            Instr::DuplicateExpr => "DUPE".to_string(),
+            Instr::StartExpr => "STEX".to_string(),
+            Instr::EndExpr => "EDEX".to_string(),
             Instr::PrintLn(a) => format!("PRLN {}", a.to_string()),
             Instr::PrintLnString(a) => format!("PRSL \"{}\"", a.to_string()),
             Instr::GetMatrix(a,  b) => format!("GETM {} {}", a.to_string(), b.to_string()),
@@ -725,13 +789,14 @@ pub trait ExternPrintLn {
 }
 
 pub struct VM {
-    globals: Vec<Reference>,
+    pub globals: Vec<Reference>,
     matrix: Box<Matrix>,
     tuples: HashMap<usize, Vec<Reference>>,
     pub stack: Stack,
+    pub expr_stack: ExprStack,
     instrs: Vec<Instr>,
     instr_pointer: usize,
-    heap: HashMap<usize, Reference>,
+    pub heap: HashMap<usize, Reference>,
     pub extern_println: Box<dyn ExternPrintLn>,
 }
 
@@ -743,6 +808,7 @@ impl VM {
             matrix: Box::new(Matrix::new(matrix_size.0, matrix_size.1)),
             tuples: HashMap::new(), 
             stack: Stack::new(stack_capacity), 
+            expr_stack: ExprStack::new(stack_capacity*2),
             instrs: instrs, 
             instr_pointer,
             heap: HashMap::new(),
@@ -782,10 +848,17 @@ impl VM {
                 Instr::Xor (a,b) => self.eval_binary_op(a, b, &instr_ops::xor),
                 Instr::Conditional(a, b, c) => self.eval_trinary_op(a, b, c, &instr_ops::conditional),
                 Instr::Push(a) => {
-                    self.stack.push(Data::Reference(a));
+                    let reference = a.resolve(self)?;
+                    self.stack.push(Data::Reference(reference));
+                    Ok(None)
+                },
+                Instr::PushExpr(a) => {
+                    let reference = a.resolve(self)?;
+                    self.expr_stack.push(reference);
                     Ok(None)
                 },
                 Instr::Pop => {self.stack.pop(); Ok(None)},
+                Instr::PopExpr => {self.expr_stack.pop(); Ok(None)},
                 Instr::Duplicate => {
                     if let Some(data) = self.stack.peek() {
                         self.stack.push(data);
@@ -794,6 +867,22 @@ impl VM {
                         Err(InstrError::new("stack is empty"))
                     }
                 },
+                Instr::DuplicateExpr => {
+                    if let Some(reference) = self.expr_stack.peek() {
+                        self.expr_stack.push(reference);
+                        Ok(None)
+                    } else {
+                        Err(InstrError::new("stack is empty"))
+                    }
+                },
+                Instr::StartExpr => {
+                    self.expr_stack.push_expr();
+                    Ok(None)
+                }
+                Instr::EndExpr => {
+                    self.expr_stack.pop_expr();
+                    Ok(None)
+                }
                 Instr::PrintLn(a) => self.eval_unary_op(a, &instr_ops::println),
                 Instr::PrintLnString(a) => {self.extern_println.println_str(&a); Ok(None)},
                 Instr::GetMatrix(a, b) => self.eval_binary_op(a, b, &instr_ops::get_matrix),
@@ -806,17 +895,10 @@ impl VM {
                 Instr::PushFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_frame),
                 Instr::PushInlineFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_inline_frame),
                 Instr::PopFrame(a) => {
-                    let mut reference = a;
-                    if matches!(a, Reference::Stack) || matches!(a, Reference::StackPeek) {
-                        if let Some(Data::Reference(a)) = self.stack.pop() {
-                            reference = a;
-                        } else {
-                            return  Err(InstrError::new("couldn't get frame return value"))
-                        }
-                    }
+                    let reference = a.resolve(self)?;
                     if let Some(instr_pointer) = self.stack.pop_frame() {
                         self.instr_pointer = instr_pointer;
-                        self.stack.push(Data::Reference(reference));
+                        self.expr_stack.push(reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("couldn't pop frame from stack"))
@@ -824,13 +906,14 @@ impl VM {
                 },
                 Instr::GetArg(a) => {
                     if let Some(reference) = self.stack.get_arg(a) {
-                        self.stack.push(Data::Reference(reference));
+                        self.expr_stack.push(reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("args index out of bounds"))
                     }
                 },
                 Instr::SetArg(a, b) => {
+                    let b = b.resolve(self)?;
                     if let Some(_) = self.stack.set_arg(a, b) {
                         Ok(None)
                     } else {
@@ -839,13 +922,14 @@ impl VM {
                 },
                 Instr::GetGlobal(a) => {
                     if let Some(reference) = self.globals.get(a) {
-                        self.stack.push(Data::Reference(*reference));
+                        self.expr_stack.push(*reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("args index out of bounds"))
                     }
                 },
                 Instr::SetGlobal(a, b) => {
+                    let b = b.resolve(self)?;
                     if let Some(reference) = self.globals.get_mut(a) {
                         *reference = b;
                         Ok(None)
@@ -859,7 +943,7 @@ impl VM {
                     let b = b.to_number(0, 0, self)?;
                     if let Some(references) = self.tuples.get(&a) {
                         if let Some(reference) = references.get(b.floor() as usize) {
-                            self.stack.push(Data::Reference(*reference));
+                            self.expr_stack.push(*reference);
                             Ok(None)
                         } else {
                             Err(InstrError::new("tuple index out of bounds"))
@@ -873,7 +957,7 @@ impl VM {
                         let b = b.to_number(0, 0, self)?;
                         if let Some(references) = self.tuples.get(&id) {
                             if let Some(reference) = references.get(b.floor() as usize) {
-                                self.stack.push(Data::Reference(*reference));
+                                self.expr_stack.push(*reference);
                                 Ok(None)
                             } else {
                                 Err(InstrError::new("tuple index out of bounds"))
@@ -948,6 +1032,20 @@ impl VM {
                                  Reference::None
                              }
                         },
+                        Reference::StackExpr => {
+                            if let Some(reference) = self.expr_stack.peek() {
+                                reference
+                             } else {
+                                 Reference::None
+                             }
+                        },
+                        Reference::StackPeekExpr => {
+                            if let Some(reference) = self.expr_stack.peek() {
+                                reference
+                             } else {
+                                 Reference::None
+                             }
+                        },
                     };
 
                     if !matches!(reference, Reference::None) {
@@ -956,9 +1054,10 @@ impl VM {
                     Ok(None)
                 }
                 Instr::ExecRef(a) => {
+                    let a = a.resolve(self)?;
                     if let Reference::Executable(argc, instr_pointer) = a{
                         let reference = self.execute(argc, instr_pointer)?;
-                        self.stack.push(Data::Reference(reference));
+                        self.expr_stack.push(reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("reference mut be executable"))
@@ -978,7 +1077,7 @@ impl VM {
                 Instr::Free(a) => self.eval_unary_op_fixed(a, &instr_ops::free),
                 Instr::Point(a) => {
                     if let Some(reference) = self.heap.get(&a) {
-                        self.stack.push(Data::Reference(*reference));
+                        self.expr_stack.push(*reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("couldn't point to heap"))
@@ -1000,6 +1099,10 @@ impl VM {
                                     (self.matrix.width(), self.matrix.height())
                                 };
 
+                                for _ in 0..argc {
+                                    self.stack.push(Data::Reference(Reference::None));
+                                }
+
                                 let mut acc = 0.0;
 
                                 for y in 0..height {
@@ -1018,7 +1121,7 @@ impl VM {
                                     }
                                 }
 
-                                self.stack.push(Data::Reference(Reference::Literal(acc)));
+                                self.expr_stack.push(Reference::Literal(acc));
                                 Ok(None)
                             },
                             Reference::Tuple(id) => {
@@ -1030,6 +1133,9 @@ impl VM {
                                         tuple.len()
                                     };
 
+                                    for _ in 0..argc {
+                                        self.stack.push(Data::Reference(Reference::None));
+                                    }
                                     let mut acc = 0.0;
 
                                     for x in 0..len {
@@ -1045,7 +1151,7 @@ impl VM {
                                         acc += num;
                                     }
 
-                                    self.stack.push(Data::Reference(Reference::Literal(acc)));
+                                    self.expr_stack.push(Reference::Literal(acc));
                                     Ok(None)
                                 }
                             },
@@ -1067,6 +1173,9 @@ impl VM {
                         let c = c.floor() as usize;
                         let d = d.floor() as usize;
 
+                        for _ in 0..argc {
+                            self.stack.push(Data::Reference(Reference::None));
+                        }
                         let mut acc = 0.0;
                         for x in (b..c).step_by(d) {
                             let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
@@ -1080,7 +1189,7 @@ impl VM {
                             acc += num;
                         }
 
-                        self.stack.push(Data::Reference(Reference::Literal(acc)));
+                        self.expr_stack.push(Reference::Literal(acc));
                         Ok(None)
                     } else {
                         Err(InstrError::new("first ref must be a executable"))
@@ -1094,6 +1203,10 @@ impl VM {
                                     (self.matrix.width(), self.matrix.height())
                                 };
 
+                                for _ in 0..argc {
+                                    self.stack.push(Data::Reference(Reference::None));
+                                }
+
                                 for y in 0..height {
                                     for x in 0..width {
                                         let num = self.matrix.get(x, y).unwrap();
@@ -1104,12 +1217,11 @@ impl VM {
                                         })?;
 
                                         let num = reference.to_number(0, 0, self)?;
-                                        
                                         self.matrix.set(x, y, num);
                                     }
                                 }
 
-                                self.stack.push(Data::Reference(Reference::Matrix));
+                                self.expr_stack.push(Reference::Matrix);
                                 Ok(None)
                             },
                             Reference::Tuple(id) => {
@@ -1121,6 +1233,10 @@ impl VM {
                                         tuple.len()
                                     };
 
+                                    for _ in 0..argc {
+                                        self.stack.push(Data::Reference(Reference::None));
+                                    }
+
                                     for x in 0..len {
                                         let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
                                         let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
@@ -1131,7 +1247,7 @@ impl VM {
                                         *self.tuples.get_mut(&id).unwrap().get_mut(x).unwrap() = reference;
                                     }
 
-                                    self.stack.push(Data::Reference(Reference::Tuple(id)));
+                                    self.expr_stack.push(Reference::Tuple(id));
                                     Ok(None)
                                 }
                             },
@@ -1151,6 +1267,10 @@ impl VM {
                                     (self.matrix.width(), self.matrix.height())
                                 };
 
+                                for _ in 0..argc {
+                                    self.stack.push(Data::Reference(Reference::None));
+                                }
+
                                 for y in 0..height {
                                     for x in 0..width {
                                         let num = self.matrix.get(x, y).unwrap();
@@ -1162,7 +1282,7 @@ impl VM {
                                     }
                                 }
 
-                                self.stack.push(Data::Reference(Reference::Matrix));
+                                self.expr_stack.push(Reference::Matrix);
                                 Ok(None)
                             },
                             Reference::Tuple(id) => {
@@ -1183,7 +1303,7 @@ impl VM {
                                         })?;
                                     }
 
-                                    self.stack.push(Data::Reference(Reference::Tuple(id)));
+                                    self.expr_stack.push(Reference::Tuple(id));
                                     Ok(None)
                                 }
                             },
@@ -1208,13 +1328,21 @@ impl VM {
                         let d = d.floor() as usize;
 
                         for x in (b..c).step_by(d) {
+                            for _ in 0..argc {
+                                self.stack.push(Data::Reference(Reference::None));
+                            }
+
                             last_reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                             })?;
+
+                            if x < c && (matches!(last_reference, Reference::Stack) || matches!(last_reference, Reference::StackPeek)) {
+                                self.stack.pop();
+                            }
                         }
 
-                        self.stack.push(Data::Reference(last_reference));
+                        self.expr_stack.push(last_reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("first ref must be a executable"))
@@ -1223,7 +1351,7 @@ impl VM {
                 Instr::Call(a) => {
                     if let Some(call) = CALLS.get(a) {
                         let reference = call.call(self)?;
-                        self.stack.push(Data::Reference(reference));
+                        self.expr_stack.push(reference);
                         Ok(None)
                     } else {
                         Err(InstrError::new("couldn't resolve call"))
@@ -1234,7 +1362,7 @@ impl VM {
             match res {
                 Ok(value) => {
                     if let Some(value) = value {
-                        self.stack.push(Data::Reference(Reference::Literal(value)));
+                        self.expr_stack.push(Reference::Literal(value));
                     }
                     Ok(())
                 },
@@ -1252,7 +1380,7 @@ impl VM {
         while self.instr_pointer != prev_instr_pointer && self.instr_pointer < self.instrs.len() {
             self.eval_instr()?;
         }
-        Ok(Reference::Stack)
+        Ok(Reference::StackExpr)
     }
 
     fn execute_inline(&mut self, argc: usize, instr_pointer: usize, op: &mut dyn FnMut(&mut VM)->()) -> Result<Reference, InstrError> {
@@ -1264,7 +1392,7 @@ impl VM {
             self.eval_instr()?;
         }
         self.instr_pointer = prev_instr_pointer;
-        Ok(Reference::Stack)
+        Ok(Reference::StackExpr)
     }
 
     fn eval_tuple_or_matrix(&mut self, reference: Reference) -> Reference {
@@ -1372,10 +1500,39 @@ mod tests {
 
     use super::{Instr, Reference, VM};
     
+    /*
+    0  JPNN 3 A0
+    1  PUSH 0
+    2  SETA 0 @
+    3  JPNN 6 A1
+    4  PUSH 0
+    5  SETA 1 @
+    6  POPX
+    7  SETA 0 @
+    8  SETA 1 @
+    9  PUSH A1
+    10 POPF @
+    11 INTO F2,0 M
+    12 POPX
+    */
     #[test]
     fn test_eval_instr() {
-        let instrs = vec![Instr::Push(Reference::Literal(1000.0)), Instr::PopFrame(Reference::Stack), Instr::Into(Reference::Executable(0,0), Reference::Matrix)];
-        let mut vm = VM::new((250, 250), 0, 100, instrs, 2, Box::new(Printer{}));
+        let instrs = vec![
+            Instr::JumpNotNone(3, Reference::Argument(0)), 
+            Instr::Push(Reference::Literal(0.0)), 
+            Instr::SetArg(0, Reference::Stack),
+            Instr::JumpNotNone(6, Reference::Argument(1)), 
+            Instr::Push(Reference::Literal(0.0)), 
+            Instr::SetArg(1, Reference::Stack),
+            Instr::Pop,
+            Instr::SetArg(0, Reference::Stack),
+            Instr::SetArg(1, Reference::Stack),
+            Instr::Push(Reference::Argument(0)), 
+            Instr::PopFrame(Reference::Stack),
+            Instr::Into(Reference::Executable(2,0), Reference::Matrix),
+            Instr::Pop,
+            ];
+        let mut vm = VM::new((250, 250), 0, 100, instrs, 11, Box::new(Printer{}));
         vm.run().unwrap();
     }
 
