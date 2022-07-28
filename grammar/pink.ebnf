@@ -8,6 +8,7 @@ xor = "xor";
 peek = "@@";
 pop = "@";
 matrix = "#";
+call = "|";
 
 if = "?";
 into = "<-";
@@ -40,7 +41,7 @@ digit = [0-9];
 number = digit+ ('.' digit*)? | '.' digit+;
 identifier = (alpha | '_') (alpha | digit | '_')*;
 
-reference = identifier | pop | peek;
+reference = identifier | pop | peek | ident call expression (';' expression) call;
 value = number | not number | true | false | indexed_value | reference | exec | reduce | for_each | into;
 operator_1st = mul | div;
 operator_2nd = add | sub;
