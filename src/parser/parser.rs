@@ -231,24 +231,7 @@ fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         None => return create_parse_error!(parser.tokenizer, "expected a reference"),
     };
     if let Token::Identifier(ident) = next {
-        if let Ok(_) = is_next_continue!(parser.tokenizer, Token::Call) {
-            let mut children = vec![parse_expression(parser)?];
-            loop {
-                if is_next_continue!(parser.tokenizer, Token::Separate).is_err() {
-                    if is_next_continue!(parser.tokenizer, Token::Call).is_ok() {
-                        break;
-                    } else {
-                        parser.tokenizer.seek(fallback);
-                        return create_parse_error!(parser.tokenizer, "expected close of call")
-                    }
-                }
-
-                children.push(parse_expression(parser)?);
-
-                if is_next_continue!(parser.tokenizer, Token::Call).is_ok() {
-                    break;
-                }
-            }
+        if let Ok(children) = parse_call_internal(parser) {
             Ok(Box::new(ASTNode::new(ASTNodeType::Call(ident), children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
         } else {
             Ok(Box::new(ASTNode::new(ASTNodeType::Reference(Token::Identifier(ident)), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
@@ -262,6 +245,34 @@ fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
                 return create_parse_error!(parser.tokenizer, "expected reference")
             }
         ), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
+    }
+}
+
+fn parse_call_internal(parser: &mut Parser) -> Result<Vec<Box<ASTNode>>, ParseError> {
+    let fallback = parser.tokenizer.pos();
+    if let Ok(_) = is_next_continue!(parser.tokenizer, Token::Call) {
+        let mut children = vec![get_or_fallback!(parser.tokenizer, fallback, parse_expression)?];
+        loop {
+            if is_next_continue!(parser.tokenizer, Token::Separate).is_err() {
+                if is_next_continue!(parser.tokenizer, Token::Call).is_ok() {
+                    break;
+                } else {
+                    parser.tokenizer.seek(fallback);
+                    return create_parse_error!(parser.tokenizer, "expected close of call")
+                }
+            }
+
+            children.push(get_or_fallback!(parser.tokenizer, fallback, parse_expression)?);
+
+            if is_next_continue!(parser.tokenizer, Token::Call).is_ok() {
+                break;
+            }
+        }
+
+        Ok(children)
+    } else {
+        parser.tokenizer.seek(fallback);
+        create_parse_error!(parser.tokenizer, "expected external call arguments")
     }
 }
 
