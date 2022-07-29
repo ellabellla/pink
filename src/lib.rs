@@ -63,9 +63,9 @@ impl Compiled {
 pub fn compile(input: &str) -> Result<Compiled, String> {
     let mut tokenizer = Tokenizer::new(input);
 
-    let mut tree = AbstractSyntaxTree::new(&mut tokenizer).map_err(|err| err.to_string())?;
-    validate(&mut tree).map_err(|err| err.to_string())?;
-    let code = Code::new(&mut tree).map_err(|err| err.to_string())?;
+    let mut tree = AbstractSyntaxTree::new(&mut tokenizer).map_err(|err| format!("Parse Error: {}", err.to_string()))?;
+    validate(&mut tree).map_err(|err| format!("Semantic Error: {}", err.to_string()))?;
+    let code = Code::new(&mut tree).map_err(|err| format!("Generation Error: {}", err.to_string()))?;
 
     let (globals, start, instrs) = code.to_instrs();
     let pretty_asm = Code::from_instr_to_string(&instrs, true);
@@ -76,9 +76,9 @@ pub fn compile(input: &str) -> Result<Compiled, String> {
 
 #[wasm_bindgen]
 pub fn run(program: Compiled, width: usize, height: usize) -> Result<Matrix, String> {
-    let instrs = Code::from_string_to_instr(&program.asm).map_err(|err| err.to_string())?;
+    let instrs = Code::from_string_to_instr(&program.asm).map_err(|err| format!("Instr Parse Error: {}", err.to_string()))?;
     let mut vm = VM::new((width, height), program.globals, 100, instrs, program.start, Box::new(Printer{}));
-    vm.run().map_err(|err| err.to_string())?;
+    vm.run().map_err(|err| format!("Instr Error: {}", err.to_string()))?;
     let matrix = *vm.get_matrix();
 
     Ok(matrix)
@@ -94,5 +94,19 @@ impl ExternPrintLn for Printer {
 
     fn println_str(&self, msg: &str) {
         println(msg);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{compile, run};
+
+    #[test]
+    fn test_full() {
+        let program = compile(r"
+        func:{0;10}<*[x;@; @;@],
+        debug|@|;
+        ").unwrap();
+        run(program, 250, 250).unwrap();
     }
 }

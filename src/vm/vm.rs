@@ -2,6 +2,27 @@ use std::{collections::{HashMap}, str::{Chars}, fmt, iter::Peekable};
 
 use super::{Stack, Data, Matrix, CALLS, ExprStack};
 
+#[macro_use] 
+mod macros {
+    #[macro_export]
+    macro_rules! create_instr_error {
+        ($vm:expr, $err:tt) => {
+            {
+                Err(InstrError::new(&format!(stringify!($err at line: {}), $vm.instr_pointer - 1)))
+            }
+        };
+    }
+
+    #[macro_export]
+    macro_rules! create_unwrapped_instr_error {
+        ($vm:expr, $err:tt) => {
+            {
+                InstrError::new(&format!(stringify!($err at line: {}), $vm.instr_pointer - 1))
+            }
+        };
+    }
+}
+
 #[derive(Debug)]
 pub struct InstrError {
     msg: String
@@ -45,30 +66,30 @@ pub enum Reference {
 impl Reference {
     pub fn resolve(&self, vm:  &mut VM) -> Result<Reference, InstrError> {
         match self {
-            Reference::Stack => match vm.stack.pop().ok_or_else(|| InstrError::new("couldn't pop from stack"))? {
+            Reference::Stack => match vm.stack.pop().ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from stack"))? {
                 Data::Reference(reference) => reference.resolve(vm),
-                Data::Frame(_, _, _) => Err(InstrError::new("couldn't pop from stack"))
+                Data::Frame(_, _, _) => create_instr_error!(vm, "couldn't pop from stack")
             },
-            Reference::StackIndex(index) => match vm.stack.get(*index).ok_or_else(|| InstrError::new("couldn't get from stack"))? {
+            Reference::StackIndex(index) => match vm.stack.get(*index).ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't get from stack"))? {
                 Data::Reference(reference) => reference.resolve(vm),
-                Data::Frame(_, _, _) => Err(InstrError::new("couldn't get from stack"))
+                Data::Frame(_, _, _) => create_instr_error!(vm, "couldn't get from stack")
             },
-            Reference::StackPeek => match vm.stack.peek().ok_or_else(|| InstrError::new("couldn't pop from stack"))? {
+            Reference::StackPeek => match vm.stack.peek().ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from stack"))? {
                 Data::Reference(reference) => reference.resolve(vm),
-                Data::Frame(_, _, _) => Err(InstrError::new("couldn't pop from stack"))
+                Data::Frame(_, _, _) => create_instr_error!(vm, "couldn't pop from stack")
             },
-            Reference::StackExpr => vm.expr_stack.pop().ok_or_else(|| InstrError::new("couldn't pop from expr stack"))?.clone().resolve(vm),
-            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or_else(|| InstrError::new("couldn't pop from expr stack"))?.clone().resolve(vm),
+            Reference::StackExpr => vm.expr_stack.pop().ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from expr stack"))?.clone().resolve(vm),
+            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from expr stack"))?.clone().resolve(vm),
             Reference::Global(id) =>  {
-                let reference = vm.globals.get(*id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
+                let reference = vm.globals.get(*id).ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from stack"))?.clone();
                 reference.resolve(vm)
             },
             Reference::Argument(id) => {
-                let reference = vm.stack.get_arg(*id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
+                let reference = vm.stack.get_arg(*id).ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from stack"))?.clone();
                 reference.resolve(vm)
             },
             Reference::Heap(id) => {
-                let reference = vm.heap.get(id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
+                let reference = vm.heap.get(id).ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop from stack"))?.clone();
                 reference.resolve(vm)
             },
             Reference::Matrix => return Ok(*self),
@@ -81,28 +102,28 @@ impl Reference {
 
     pub fn to_number(&self, x: usize, y: usize, vm:  &mut VM) -> Result<f64, InstrError> {
         match self {
-            Reference::Stack => vm.stack.pop().ok_or(InstrError::new("couldnt pop from stack")).and_then(|data| data.to_number(vm)),
-            Reference::StackIndex(index) => vm.stack.get(*index).ok_or(InstrError::new("couldnt get from stack")).and_then(|data| data.to_number(vm)),
-            Reference::StackPeek => vm.stack.peek().ok_or(InstrError::new("couldnt peep from stack")).and_then(|data| data.to_number(vm)),
-            Reference::StackExpr => vm.expr_stack.pop().ok_or(InstrError::new("couldnt pop from expr stack"))?.clone().to_number(x,  y, vm),
-            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or(InstrError::new("couldnt peep from expr stack"))?.clone().to_number(x, y, vm),
+            Reference::Stack => vm.stack.pop().ok_or(create_unwrapped_instr_error!(vm, "couldnt pop from stack")).and_then(|data| data.to_number(vm)),
+            Reference::StackIndex(index) => vm.stack.get(*index).ok_or(create_unwrapped_instr_error!(vm, "couldnt get from stack")).and_then(|data| data.to_number(vm)),
+            Reference::StackPeek => vm.stack.peek().ok_or(create_unwrapped_instr_error!(vm, "couldnt peep from stack")).and_then(|data| data.to_number(vm)),
+            Reference::StackExpr => vm.expr_stack.pop().ok_or(create_unwrapped_instr_error!(vm, "couldnt pop from expr stack"))?.clone().to_number(x,  y, vm),
+            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or(create_unwrapped_instr_error!(vm, "couldnt peep from expr stack"))?.clone().to_number(x, y, vm),
             Reference::Global(index) => {
-                let reference = vm.globals.get(*index).ok_or(InstrError::new("couldnt get global"))?.clone();
+                let reference = vm.globals.get(*index).ok_or(create_unwrapped_instr_error!(vm, "couldnt get global"))?.clone();
                 reference.to_number(x, y, vm)
             },
             Reference::Argument(index) => {
-                let reference = vm.stack.get_arg(*index).ok_or(InstrError::new("couldnt get argument index"))?.clone();
+                let reference = vm.stack.get_arg(*index).ok_or(create_unwrapped_instr_error!(vm, "couldnt get argument index"))?.clone();
                 reference.to_number(x, y, vm)
             },
             Reference::Heap(index) => {
-                let reference = vm.heap.get(index).ok_or(InstrError::new("couldnt get global index"))?.clone();
+                let reference = vm.heap.get(index).ok_or(create_unwrapped_instr_error!(vm, "couldnt get global index"))?.clone();
                 reference.to_number(x, y, vm)
             },
-            Reference::Matrix => vm.matrix.get(x, y).ok_or(InstrError::new("couldnt get matrix index")),
+            Reference::Matrix => vm.matrix.get(x, y).ok_or(create_unwrapped_instr_error!(vm, "couldnt get matrix index")),
             Reference::Literal(num) => Ok(*num),
             Reference::Tuple(tuple_index) => {
-                let tuple = vm.tuples.get(tuple_index).ok_or(InstrError::new("couldnt get tuple"))?;
-                let reference = tuple.get(x).ok_or(InstrError::new("couldnt get tuple index"))?.clone();
+                let tuple = vm.tuples.get(tuple_index).ok_or(create_unwrapped_instr_error!(vm, "couldnt get tuple"))?;
+                let reference = tuple.get(x).ok_or(create_unwrapped_instr_error!(vm, "couldnt get tuple index"))?.clone();
                 reference.to_number(x, y, vm)
             },
             Reference::None => Ok(0.0),
@@ -193,7 +214,7 @@ impl Reference {
                                 return Ok(Reference::Executable(index.floor() as usize, index2.floor() as usize))
                             }
                         }
-                        return Err(InstrError::new("Expected delimiter ','"));
+                        return Err(InstrError::new("Expected delimiter ','"))
                     },
                     Reference::Tuple(_) => return Ok(Reference::Tuple(index.floor() as usize)),
                     _ => (),
@@ -580,7 +601,7 @@ pub fn parse_string(chars: &mut Peekable<Chars>) -> Result<String, InstrError>{
         }
     } 
 
-    Err(InstrError::new("couldn't parse string"))
+    Err(InstrError::new( "couldn't parse string"))
 }
 
 mod instr_ops {
@@ -637,8 +658,8 @@ mod instr_ops {
     }
 
     pub fn xor(a: f64, b: f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
-        let or = or(a,b,vm)?.ok_or(InstrError::new("failed to or values"))?;
-        let and = and(a,b,vm)?.ok_or(InstrError::new("failed to or values"))?;
+        let or = or(a,b,vm)?.ok_or(create_unwrapped_instr_error!(vm, "failed to or values"))?;
+        let and = and(a,b,vm)?.ok_or(create_unwrapped_instr_error!(vm, "failed to or values"))?;
         if or != 0.0 && and == 0.0 { Ok(Some(1.0)) } else { Ok(Some(0.0)) }
     }
 
@@ -651,7 +672,7 @@ mod instr_ops {
             vm.expr_stack.push(reference);
             Ok(None)
         } else {
-            Err(InstrError::new("could not get value in matrix"))
+            create_instr_error!(vm, "could not get value in matrix")
             
         }
     }
@@ -665,7 +686,7 @@ mod instr_ops {
         if let Some(number) = vm.matrix.get(b.floor() as usize, c.floor() as usize) {
             Ok(Some(number))
         } else{
-            Err(InstrError::new("could not get value in matrix"))
+            create_instr_error!(vm, "could not get value in matrix")
         }
     }
     
@@ -673,14 +694,14 @@ mod instr_ops {
         if let Some(number) = vm.matrix.set(b.floor() as usize, c.floor() as usize, d) {
             Ok(Some(number))
         } else{
-            Err(InstrError::new("could not get value in matrix"))
+            create_instr_error!(vm, "could not get value in matrix")
         }
     }   
     pub fn get_flat_matrix(b:  f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Some(number) = vm.matrix.get_flat(b.floor() as usize) {
             Ok(Some(number))
         } else{
-            Err(InstrError::new("could not get value in matrix"))
+            create_instr_error!(vm, "could not get value in matrix")
         }
 
     }
@@ -689,7 +710,7 @@ mod instr_ops {
         if let Some(number) = vm.matrix.set_flat(b.floor() as usize, c) {
             Ok(Some(number))
         } else{
-            Err(InstrError::new("could not get value in matrix"))
+            create_instr_error!(vm, "could not get value in matrix")
         }
     }   
 
@@ -726,14 +747,14 @@ mod instr_ops {
         if let Some(_) = vm.tuples.remove(&a) {
             Ok(None)
         } else {
-            Err(InstrError::new("couldn't remove tuple"))
+            create_instr_error!(vm, "couldn't remove tuple")
         }
     }
     pub fn len_tuple(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Some(tuples) = vm.tuples.get(&a) {
             Ok(Some(tuples.len() as f64))
         } else {
-            Err(InstrError::new("could not get tuple"))
+            create_instr_error!(vm, "could not get tuple")
         }
     }
     pub fn jump(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -799,7 +820,7 @@ mod instr_ops {
         if let Some(_) = vm.heap.remove(&a) {
             Ok(None)
         } else {
-            Err(InstrError::new("couldn't remove from heap"))
+            create_instr_error!(vm, "couldn't remove from heap")
         }
 
     }
@@ -891,7 +912,7 @@ impl VM {
                         self.stack.push(data);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("stack is empty"))
+                        create_instr_error!(self, "stack is empty")
                     }
                 },
                 Instr::DuplicateExpr => {
@@ -899,7 +920,7 @@ impl VM {
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("stack is empty"))
+                        create_instr_error!(self, "stack is empty")
                     }
                 },
                 Instr::StartExpr => {
@@ -929,7 +950,7 @@ impl VM {
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("couldn't pop frame from stack"))
+                        create_instr_error!(self, "couldn't pop frame from stack")
                     }
                 },
                 Instr::GetArg(a) => {
@@ -937,7 +958,7 @@ impl VM {
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("args index out of bounds"))
+                        create_instr_error!(self, "args index out of bounds")
                     }
                 },
                 Instr::SetArg(a, b) => {
@@ -945,7 +966,7 @@ impl VM {
                     if let Some(_) = self.stack.set_arg(a, b) {
                         Ok(None)
                     } else {
-                        Err(InstrError::new("args index out of bounds"))
+                        create_instr_error!(self, "args index out of bounds")
                     }
                 },
                 Instr::GetGlobal(a) => {
@@ -953,7 +974,7 @@ impl VM {
                         self.expr_stack.push(*reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("args index out of bounds"))
+                        create_instr_error!(self, "args index out of bounds")
                     }
                 },
                 Instr::SetGlobal(a, b) => {
@@ -962,7 +983,7 @@ impl VM {
                         *reference = b;
                         Ok(None)
                     } else {
-                        Err(InstrError::new("args index out of bounds"))
+                        create_instr_error!(self, "args index out of bounds")
                     }
                 },
                 Instr::CreateTuple(a, b) => self.eval_binary_op_fixed1(a, b, &instr_ops::create_tuple),
@@ -974,10 +995,10 @@ impl VM {
                             self.expr_stack.push(*reference);
                             Ok(None)
                         } else {
-                            Err(InstrError::new("tuple index out of bounds"))
+                            create_instr_error!(self, "tuple index out of bounds")
                         }
                     } else {
-                        Err(InstrError::new("args index out of bounds"))
+                        create_instr_error!(self, "args index out of bounds")
                     }
                 },
                 Instr::GetTupleReference(a, b) => {
@@ -988,13 +1009,13 @@ impl VM {
                                 self.expr_stack.push(*reference);
                                 Ok(None)
                             } else {
-                                Err(InstrError::new("tuple index out of bounds"))
+                                create_instr_error!(self, "tuple index out of bounds")
                             }
                         } else {
-                            Err(InstrError::new("args index out of bounds"))
+                            create_instr_error!(self, "args index out of bounds")
                         }
                     } else {
-                        Err(InstrError::new("first reference must be a tuple"))
+                        create_instr_error!(self, "first reference must be a tuple")
                     }
                 },
                 Instr::SetTuple(a, b, c) => {
@@ -1004,10 +1025,10 @@ impl VM {
                             *reference = c;
                             Ok(None)
                         } else {
-                            Err(InstrError::new("tuple index out of bounds"))
+                            create_instr_error!(self, "tuple index out of bounds")
                         }
                     } else {
-                        Err(InstrError::new("args index out of bounds"))
+                        create_instr_error!(self, "args index out of bounds")
                     }
                 },
                 Instr::LenTuple(a) => self.eval_unary_op_fixed(a, &instr_ops::len_tuple),
@@ -1095,7 +1116,7 @@ impl VM {
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("reference mut be executable"))
+                        create_instr_error!(self, "reference mut be executable")
                     }
                 },
                 Instr::Alloc(a, b) => {
@@ -1112,7 +1133,7 @@ impl VM {
                         self.expr_stack.push(*reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("couldn't point to heap"))
+                        create_instr_error!(self, "couldn't point to heap")
                     }
                 },
                 Instr::SetPoint(a, b) => {
@@ -1120,7 +1141,7 @@ impl VM {
                         *reference = b;
                         Ok(None)
                     } else {
-                        Err(InstrError::new("couldn't set data on heap"))
+                        create_instr_error!(self, "couldn't set data on heap")
                     }
                 },
                 Instr::Reduce(a, b) => {
@@ -1158,7 +1179,7 @@ impl VM {
                             },
                             Reference::Tuple(id) => {
                                 if !self.tuples.contains_key(&id) {
-                                    Err(InstrError::new("invalid index of matrix"))
+                                    create_instr_error!(self, "invalid index of matrix")
                                 } else {
                                     let len =  {
                                         let tuple = self.tuples.get(&id).unwrap();
@@ -1188,11 +1209,11 @@ impl VM {
                                 }
                             },
                             _ => {
-                                Err(InstrError::new("second ref must be a tuple or matrix"))
+                                create_instr_error!(self, "second ref must be a tuple or matrix")
                             }
                         }
                     } else {
-                        Err(InstrError::new("first ref must be a executable"))
+                        create_instr_error!(self, "first ref must be a executable")
                     }
                 },
                 Instr::ReduceRange(a, b, c, d) => {
@@ -1224,7 +1245,7 @@ impl VM {
                         self.expr_stack.push(Reference::Literal(acc));
                         Ok(None)
                     } else {
-                        Err(InstrError::new("first ref must be a executable"))
+                        create_instr_error!(self, "first ref must be a executable")
                     }
                 },
                 Instr::Into(a, b) => {
@@ -1258,7 +1279,7 @@ impl VM {
                             },
                             Reference::Tuple(id) => {
                                 if !self.tuples.contains_key(&id) {
-                                    Err(InstrError::new("invalid index of matrix"))
+                                    create_instr_error!(self, "invalid index of matrix")
                                 } else {
                                     let len =  {
                                         let tuple = self.tuples.get(&id).unwrap();
@@ -1284,11 +1305,11 @@ impl VM {
                                 }
                             },
                             _ => {
-                                Err(InstrError::new("second ref must be a tuple or matrix"))
+                                create_instr_error!(self, "second ref must be a tuple or matrix")
                             }
                         }
                     } else {
-                        Err(InstrError::new("first ref must be a executable"))
+                        create_instr_error!(self, "first ref must be a executable")
                     }
                 },
                 Instr::ForEach(a, b) => {
@@ -1319,7 +1340,7 @@ impl VM {
                             },
                             Reference::Tuple(id) => {
                                 if !self.tuples.contains_key(&id) {
-                                    Err(InstrError::new("invalid index of matrix"))
+                                    create_instr_error!(self, "invalid index of matrix")
                                 } else {
                                     let len =  {
                                         let tuple = self.tuples.get(&id).unwrap();
@@ -1340,11 +1361,11 @@ impl VM {
                                 }
                             },
                             _ => {
-                                Err(InstrError::new("second ref must be a tuple or matrix"))
+                                create_instr_error!(self, "second ref must be a tuple or matrix")
                             }
                         }
                     } else {
-                        Err(InstrError::new("first ref must be a executable"))
+                        create_instr_error!(self, "first ref must be a executable")
                     }
                 },
                 Instr::ForEachRange(a, b, c, d) => {
@@ -1379,7 +1400,7 @@ impl VM {
                         self.expr_stack.push(last_reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("first ref must be a executable"))
+                        create_instr_error!(self, "first ref must be a executable")
                     }
                 },
                 Instr::Call(a) => {
@@ -1388,7 +1409,7 @@ impl VM {
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
-                        Err(InstrError::new("couldn't resolve call"))
+                        create_instr_error!(self, "couldn't resolve call")
                     }
                 }
             };
@@ -1403,7 +1424,7 @@ impl VM {
                 Err(err) => Err(err),
             }
         } else {
-            Err(InstrError::new("instr pointer over ran instrs"))
+            create_instr_error!(self, "instr pointer over ran instrs")
         }
     }
 
