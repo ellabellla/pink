@@ -1,4 +1,4 @@
 export function println(msg) {
     let outputConsole = document.getElementById("output-console");
-    outputConsole.innerHTML += `${msg}<br/>`;
+    outputConsole.innerHTML += `${msg}\n`;
 }
