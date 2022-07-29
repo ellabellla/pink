@@ -63,7 +63,7 @@ mod macros {
                             break Ok($vars $(,$vars2)* )
                         }
                     } else {
-                        break create_semantic_error!($node, err)
+                        break create_semantic_error!($node, $err)
                     }
                     i+=1;
                 }
@@ -78,7 +78,7 @@ mod macros {
                             break Ok(())
                         }
                     } else {
-                        break create_semantic_error!($node, err)
+                        break create_semantic_error!($node, $err)
                     }
                     i+=1;
                 }

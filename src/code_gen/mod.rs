@@ -15,7 +15,7 @@ mod macros {
                             break Ok($vars $(,$vars2)* )
                         }
                     } else {
-                        break create_generation_error!($node, err)
+                        break create_generation_error!($node, $err)
                     }
                     i+=1;
                 }
@@ -30,7 +30,7 @@ mod macros {
                             break Ok(())
                         }
                     } else {
-                        break create_generation_error!($node, err)
+                        break create_generation_error!($node, $err)
                     }
                     i+=1;
                 }
@@ -1067,7 +1067,7 @@ centre: 250/2;
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        (x:0)->[x=0?(1!;0)];
+        ({x}) <- [@; @];
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));
