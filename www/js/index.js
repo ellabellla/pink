@@ -22,7 +22,7 @@ init()
                 asmStart.innerHTML = compiled.start;
                 asmGlobals.innerHTML = compiled.globals;
             } catch (err) {
-                prettyAsm.value = `ERROR:\n${err}`
+                prettyAsm.value = `ERROR:\n${err}`;
                 asmStart.value = 0;
                 asmGlobals.value = 0;
             }
@@ -50,7 +50,7 @@ init()
                 ctx.globalCompositeOperation = "copy";
                 ctx.drawImage(outputCanvas, 0, 0, width, height);
             } catch(err) {
-                console.log(err);
+                outputConsole.value = `ERROR:\n${err}`;
             }
         })
         
