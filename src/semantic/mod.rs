@@ -6,15 +6,6 @@ use crate::vm::{Call, create_call_map};
 
 #[macro_use] 
 mod macros {
-
-    #[macro_export]
-    macro_rules! expr {
-        ($e:expr) => {
-            $e
-        }
-    }
-
-    #[macro_export]
     macro_rules! is {
         ($a:expr, $err:tt, $enum:ident::$pattern:ident($vars:ident $(,$vars2:ident)* ) ) => {
             {
@@ -45,43 +36,52 @@ mod macros {
         };
     }
 
-    #[macro_export]
-    macro_rules! is_true {
-        ($a:expr, $err:tt, $b:expr, $op:tt) => {
-            {
-                if expr!($a $op $b) {
-                    Ok(())
-                } else {
-                    Err(SemanticError::new(stringify!($err)))
-                }
-            }
-        };
-    }
     
-    #[macro_export]
     macro_rules! create_semantic_error {
-        ($node:ident, $err:tt) => {
+        ($node:expr, $err:tt) => {
             {
+                let mut err = stringify!($err).to_string();
                 for i in 0..$node.annotations.len() {
-                    if let Annotation::DebugInfo(line, index) = $node.annotations[i] {
-                        return Err(SemanticError::new(&format!(stringify!($err at line: {} and index: {}), line, index)))
+                    if let Annotation::DebugInfo(line, line_index) = $node.annotations[i] {
+                        err = format!("{} at line: {} and index: {}", err, line, line_index);
+                        break;
                     }
                 }
-                Err(SemanticError::new(stringify!($err)))
+                Err(SemanticError::new(&err))
             }
         };
     }
 
-    #[macro_export]
-    macro_rules! create_unwrapped_semantic_error {
-        ($node:ident, $err:tt) => {
+    
+    macro_rules! get_annotation {
+        ($node:expr, $err:tt, $enum:ident::$pattern:ident($vars:ident $(,$vars2:ident)* )) => {
             {
-                for i in 0..$node.annotations.len() {
-                    if let Annotation::DebugInfo(pos, line, line_index) = $node.annotations[i] {
-                        return SemanticError::new(&format!(stringify!($err at line: {} and index: {}), line, pos - line_index))
+                let mut i = 0;
+                loop {
+                    if i < $node.annotations.len() {
+                        if let $enum::$pattern($vars $(,$vars2)* ) = &$node.annotations[i]  {
+                            break Ok($vars $(,$vars2)* )
+                        }
+                    } else {
+                        break create_semantic_error!($node, err)
                     }
+                    i+=1;
                 }
-                SemanticError::new(stringify!($err))
+            }
+        };
+        ($node:expr, $err:tt, $enum:ident::$pattern:ident) => {
+            {
+                let mut i = 0;
+                loop {
+                    if i < $node.annotations.len() {
+                        if let $enum::$pattern = &$node.annotations[i]  {
+                            break Ok(())
+                        }
+                    } else {
+                        break create_semantic_error!($node, err)
+                    }
+                    i+=1;
+                }
             }
         };
     }
@@ -556,36 +556,15 @@ fn validate_extended_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box
         ASTNodeType::Range => Ok(()),
         ASTNodeType::RangeComplex => Ok(()),
         ASTNodeType::Matrix => Ok(()),
-        ASTNodeType::Tuple(_) => validate_tuple(data, node),
-        ASTNodeType::Reference(Token::Identifier(ident)) => {
-            if let Some(variable) = data.globals.variables.get(ident) {
-                if !matches!(variable.var_type, VariableType::Matrix) && 
-                    !matches!(variable.var_type, VariableType::Tuple)  {
-                        return create_semantic_error!(node, "variable must be a matrix or tuple type");
-                } 
-                node.children[0].annotations.push(Annotation::GlobalId(variable.id));
-                if matches!(variable.var_type, VariableType::Executable) {
-                    node.children[0].annotations.push(Annotation::Executable);
-                } else if matches!(variable.var_type, VariableType::ExpressionList)  {
-                    node.children[0].annotations.push(Annotation::ExpressionList);
-                }
-                is!(variable.var_type, "variable must be defined before it is used", VariableType::Matrix).map(|_|())
-                .or_else(|_| is!(variable.var_type, "variable must be defined before it is used", VariableType::Tuple).map(|_|()))
+        ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[0]),
+        ASTNodeType::Reference(Token::Identifier(_)) => {
+            validate_reference(data, &mut node.children[0], false)?;
+            if !matches!(get_annotation!(node.children[0], "", Annotation::Matrix), Ok(_)) &&
+                !matches!(get_annotation!(node.children[0], "", Annotation::Tuple), Ok(_)) {
+                create_semantic_error!(node.children[0], "expected reference to be a tuple or matrix")
             } else {
-                let scope = is!(data.stack.last(), "variable must be defined before it is used", Some(scope))?;
-                let variable = is!(scope.variables.get(ident), "variable must be defined before it is used", Some(variable))?;
-                if !matches!(variable.var_type, VariableType::Matrix) && 
-                    !matches!(variable.var_type, VariableType::Tuple)  {
-                        return create_semantic_error!(node, "variable must be a matrix or tuple type");
-                } 
-                node.children[0].annotations.push(Annotation::Id(variable.id));
-                if matches!(variable.var_type, VariableType::Executable) {
-                    node.children[0].annotations.push(Annotation::Executable);
-                } else if matches!(variable.var_type, VariableType::ExpressionList)  {
-                    node.children[0].annotations.push(Annotation::ExpressionList);
-                }
-                is!(variable.var_type, "variable must be defined before it is used", VariableType::Matrix).map(|_|())
-                .or_else(|_| is!(variable.var_type, "variable must be defined before it is used", VariableType::Tuple).map(|_|()) )           }
+                Ok(())
+            }
         },
         _ => create_semantic_error!(node, "invalid lhs of into")
     }
@@ -757,26 +736,30 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
     let ident = ident.unwrap();
 
     let var_type = if let Some(variable) = data.globals.variables.get(ident) {
+        match variable.var_type {
+            VariableType::Number => (),
+            VariableType::Executable => node.annotations.push(Annotation::Executable),
+            VariableType::ExpressionList => node.annotations.push(Annotation::ExpressionList),
+            VariableType::Tuple => node.annotations.push(Annotation::Tuple),
+            VariableType::Matrix => node.annotations.push(Annotation::Matrix),
+        }
         node.annotations.push(Annotation::GlobalId(variable.id));
         if let Some(argc) = variable.argc {
             node.annotations.push(Annotation::Argc(argc));
         }
-        if matches!(variable.var_type, VariableType::Executable) {
-            node.annotations.push(Annotation::Executable);
-        } else if matches!(variable.var_type, VariableType::ExpressionList)  {
-            node.annotations.push(Annotation::ExpressionList);
-        }
         variable.var_type.clone()
     } else if let Some(scope) = data.stack.last() {
         if let Some(variable) = scope.variables.get(ident) {
+            match variable.var_type {
+                VariableType::Number => (),
+                VariableType::Executable => node.annotations.push(Annotation::Executable),
+                VariableType::ExpressionList => node.annotations.push(Annotation::ExpressionList),
+                VariableType::Tuple => node.annotations.push(Annotation::Tuple),
+                VariableType::Matrix => node.annotations.push(Annotation::Matrix),
+            }
             node.annotations.push(Annotation::Id(variable.id));
             if let Some(argc) = variable.argc {
                 node.annotations.push(Annotation::Argc(argc));
-            }
-            if matches!(variable.var_type, VariableType::Executable) {
-                node.annotations.push(Annotation::Executable);
-            } else if matches!(variable.var_type, VariableType::ExpressionList)  {
-                node.annotations.push(Annotation::ExpressionList);
             }
             variable.var_type.clone()
         } else {
@@ -785,13 +768,15 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
                 if let Some(prev_scope) = data.stack.get(len - 2) {
                     if let Some(variable) = prev_scope.variables.get(ident) {
                         node.annotations.push(Annotation::PullThrough(variable.id));
+                        match variable.var_type {
+                            VariableType::Number => (),
+                            VariableType::Executable => node.annotations.push(Annotation::Executable),
+                            VariableType::ExpressionList => node.annotations.push(Annotation::ExpressionList),
+                            VariableType::Tuple => node.annotations.push(Annotation::Tuple),
+                            VariableType::Matrix => node.annotations.push(Annotation::Matrix),
+                        }
                         if let Some(argc) = variable.argc {
                             node.annotations.push(Annotation::Argc(argc));
-                        }
-                        if matches!(variable.var_type, VariableType::Executable) {
-                            node.annotations.push(Annotation::Executable);
-                        } else if matches!(variable.var_type, VariableType::ExpressionList)  {
-                            node.annotations.push(Annotation::ExpressionList);
                         }
                         variable.var_type.clone()
                     } else {

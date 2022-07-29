@@ -5,7 +5,7 @@ use super::{AbstractSyntaxTree, ASTNode, ASTNodeType, StatementType, Annotation}
 
 #[macro_use] 
 mod macros {
-    #[macro_export]
+    
     macro_rules! get_next {
         ($parser:ident.$tokenizer:ident, $fallback:ident, Token::$pattern:ident($($vars:ident)*) ) => {
             if let Some(token) = $parser.$tokenizer.next() { 
@@ -24,7 +24,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! is_next_any {
         ($parser:ident.$tokenizer:ident, $fallback:ident, $(Token::$pattern:ident$(($($vars:ident)*))? $(,)?)+) => {
             if let Some(token) = $parser.$tokenizer.next() { 
@@ -43,7 +43,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! is_next {
         ($parser:ident.$tokenizer:ident, $fallback:ident, Token::$pattern:ident$(($($vars:ident)*))?) => {
             if let Some(token) = $parser.$tokenizer.next() { 
@@ -62,7 +62,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! is_next_continue {
         ($tokenizer:expr, Token::$pattern:ident$(($($vars:ident)*))? ) => {
             {
@@ -84,7 +84,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! or {
         ($parser:ident.$tokenizer:ident, $err:tt, $fallback:ident, $($parse:ident $(,)?)+) => {
             $(
@@ -100,7 +100,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! or_continue {
         ($parser:ident.$tokenizer:ident, $err:tt, $($parse:ident $(,)?)+) => {
             $(
@@ -114,7 +114,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! get_or_fallback {
         ($parser:ident.$tokenizer:ident, $fallback:ident, $parse:ident) => {
             match $parse($parser) {
@@ -127,7 +127,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! create_parse_error {
         ($parser:ident.$tokenizer:ident, $err:tt) => {
             {
@@ -137,7 +137,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! create_token_parse_error {
         ($parser:ident.$tokenizer:ident, $(Token::$pattern:ident$(($($vars:ident)*))? $(,)?)+) => {
             {
@@ -147,7 +147,7 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    #[cfg(test)]
     macro_rules! assert_parse_eq {
         ($input:tt, $output:tt) => {
             assert_eq!(AbstractSyntaxTree::new(&mut Tokenizer::new($input)).unwrap().to_string(false), $output);
@@ -230,7 +230,6 @@ fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Some(token) => token,
         None => return create_parse_error!(parser.tokenizer, "expected a reference"),
     };
-    println!("{:?}", next);
     if let Token::Identifier(ident) = next {
         if let Ok((string, children)) = parse_call_internal(parser) {
             let ast_type = match string {

@@ -5,21 +5,6 @@ use crate::{lexer::{Token}, parser::{AbstractSyntaxTree, ASTNode, Annotation, AS
 
 #[macro_use] 
 mod macros {
-    #[macro_export]
-    macro_rules! push_string {
-        ($output:expr, $str:tt) => {
-            for c in stringify!($str).chars() {
-                $output.push(c);
-            }
-        };
-        ($output:expr, $format:tt, $str:tt) => {
-            for c in format!(stringify!($format), stringify!($str)).chars() {
-                $output.push(c);
-            }
-        };
-    }
-
-    #[macro_export]
     macro_rules! get_annotation {
         ($node:expr, $err:tt, $enum:ident::$pattern:ident($vars:ident $(,$vars2:ident)* )) => {
             {
@@ -53,34 +38,18 @@ mod macros {
         };
     }
 
-    #[macro_export]
+    
     macro_rules! create_generation_error {
         ($node:expr, $err:tt) => {
             {
                 let mut err = stringify!($err).to_string();
                 for i in 0..$node.annotations.len() {
                     if let Annotation::DebugInfo(line, line_index) = $node.annotations[i] {
-                        err = format!(stringify!($err at line: {} and index: {}), line, line_index);
+                        err = format!("{} at line: {} and index: {}", err, line, line_index);
                         break;
                     }
                 }
                 Err(GenerationError::new(&err))
-            }
-        };
-    }
-
-    #[macro_export]
-    macro_rules! create_unwrapped_generation_error {
-        ($node:expr, $err:tt) => {
-            {
-                let mut err = stringify!($err).to_string();
-                for i in 0..$node.annotations.len() {
-                    if let Annotation::DebugInfo(line, line_index) = $node.annotations[i] {
-                        err = format!(stringify!($err at line: {} and index: {}), line, line_index);
-                        break;
-                    }
-                }
-                GenerationError::new(&err)
             }
         };
     }
@@ -465,13 +434,7 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
                 return create_generation_error!(node.children[0], "expected tuple as lhs")
             }
         },
-        ASTNodeType::Reference(_) => {
-            match generate_reference(func, naming, &node.children[0])? {
-                Reference::Tuple(id) => Reference::Tuple(id),
-                Reference::Matrix => Reference::Matrix,
-                _=> return create_generation_error!(node.children[0], "expected reference to be a tuple or matrix"),
-            }
-        }
+        ASTNodeType::Reference(_) => generate_reference(func, naming, &node.children[0])?,
         _ => return create_generation_error!(node.children[0], "invalid lhs for extended exec"),
     };
 

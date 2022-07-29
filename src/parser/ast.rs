@@ -56,6 +56,8 @@ pub enum Annotation {
     GlobalId(usize),
     StackIndex(usize),
     StackPop(usize),
+    Tuple,
+    Matrix,
     Argc(usize),
     Executable,
     ExpressionList,
