@@ -567,7 +567,7 @@ fn validate_extended_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box
         res
     })?;
     match &node.children[0].node_type {
-        ASTNodeType::TupleConstructor => Ok(()),
+        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[0].children[0], false),
         ASTNodeType::Range => Ok(()),
         ASTNodeType::RangeComplex => Ok(()),
         ASTNodeType::Matrix => Ok(()),
