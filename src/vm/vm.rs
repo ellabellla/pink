@@ -127,7 +127,12 @@ impl Reference {
                 reference.to_number(x, y, vm)
             },
             Reference::None => Ok(0.0),
-            Reference::Executable(argc, instr_pointer) => vm.execute(*argc, *instr_pointer)?.to_number(x, y, vm),
+            Reference::Executable(argc, instr_pointer) => {
+                for _ in 0..*argc {
+                    vm.stack.push(Data::Reference(Reference::None));
+                }
+                vm.execute(*argc, *instr_pointer)?.to_number(x, y, vm)
+            },
         }
     }
 
