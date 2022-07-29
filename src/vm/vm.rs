@@ -718,11 +718,8 @@ mod instr_ops {
         if vm.tuples.contains_key(&a) {
             Ok(None)
         } else {
-            if let Some(_) = vm.tuples.insert(a, vec![Reference::None; b.floor() as usize]) {
-                Ok(None)
-            } else {
-                Err(InstrError::new("couldn't create tuple"))
-            }
+            vm.tuples.insert(a, vec![Reference::None; b.floor() as usize]);
+            Ok(None)
         }
     }
     pub fn remove_tuple(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -1105,11 +1102,8 @@ impl VM {
                     if self.heap.contains_key(&a) {
                         Ok(None)
                     } else {
-                        if let Some(_) = self.heap.insert(a, b) {
-                            Ok(None)
-                        } else {
-                            Err(InstrError::new("couldn't add to heap"))
-                        }
+                        self.heap.insert(a, b);
+                        Ok(None)
                     }
                 },
                 Instr::Free(a) => self.eval_unary_op_fixed(a, &instr_ops::free),
@@ -1375,8 +1369,10 @@ impl VM {
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                             })?;
 
-                            if x < c && (matches!(last_reference, Reference::Stack) || matches!(last_reference, Reference::StackPeek)) {
-                                self.stack.pop();
+                            if x < c - 1 {
+                                if matches!(last_reference, Reference::Stack) || matches!(last_reference, Reference::StackPeek) {
+                                    self.stack.pop();
+                                }
                             }
                         }
 
