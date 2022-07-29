@@ -323,10 +323,7 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
         ASTNodeType::Indexed => generate_indexed(func, naming, node),
         ASTNodeType::Reference(_) => generate_reference(func, naming, node),
         ASTNodeType::Call(_) => generate_call(func, naming, node),
-        ASTNodeType::Number(num) => {
-            func.code.push(Line::Instr(Instr::PushExpr(Reference::Literal(num))));
-            Ok(Reference::StackExpr)
-        },
+        ASTNodeType::Number(num) => Ok(Reference::Literal(num)),
         _ => Err(GenerationError::new("invalid value in expression"))
     }
 }
@@ -715,13 +712,19 @@ fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTN
 
     match &reference {
         Token::Peek => {
-            func.code.push(Line::Instr(Instr::Duplicate));
-            func.code.push(Line::Instr(Instr::PushExpr(Reference::Stack)));
-            Ok(Reference::StackExpr)
+            if let Ok(index) = get_annotation!(node, "", Annotation::StackIndex(_index)) {
+                Ok(Reference::StackIndex(*index))
+            } else {
+                func.code.push(Line::Instr(Instr::Duplicate));
+                Ok(Reference::Stack)
+            }
         },
         Token::Pop => {
-            func.code.push(Line::Instr(Instr::PushExpr(Reference::Stack)));
-            Ok(Reference::StackExpr)
+            if let Ok(index) = get_annotation!(node, "", Annotation::StackIndex(_index)) {
+                Ok(Reference::StackIndex(*index))
+            } else {
+                Ok(Reference::Stack)
+            }
         },
         Token::Matrix => Ok(Reference::Matrix),
         Token::Identifier(_) => {
@@ -740,28 +743,38 @@ fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTN
 }
 
 fn generate_expression(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    let res =  match &node.node_type {
+    let res = generate_expression_helper(func, naming, node)?;
+    if let Ok(count) = get_annotation!(node, "", Annotation::StackPop(_count)) {
+        if *count != 0 {
+            func.code.push(Line::Instr(Instr::Pop(*count)));
+        }
+    }
+    Ok(res)
+}
+
+fn generate_expression_helper(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
+    match &node.node_type {
         ASTNodeType::Operator(token) => {
             if matches!(token, Token::If) {
-                let cond = generate_expression(func, naming, &node.children[0])?;
+                let cond = generate_expression_helper(func, naming, &node.children[0])?;
                 let false_outcome = naming.new_label_id();
                 let end = naming.new_label_id();
 
                 func.code.push(Line::Jump(Instr::JumpEqual(0, cond, Reference::Literal(0.0)), JumpType::Label(false_outcome)));
-                let true_reference = generate_expression(func, naming, &node.children[1].children[0])?;
+                let true_reference = generate_expression_helper(func, naming, &node.children[1].children[0])?;
                 if !matches!(true_reference, Reference::StackExpr) && !matches!(true_reference, Reference::None) {
                     func.code.push(Line::Instr(Instr::PushExpr(true_reference)));
                 }
                 func.code.push(Line::Jump(Instr::Jump(0), JumpType::Label(end)));
                 func.code.push(Line::Label(false_outcome));
-                let false_reference = generate_expression(func, naming, &node.children[1].children[2])?;
+                let false_reference = generate_expression_helper(func, naming, &node.children[1].children[2])?;
                 if !matches!(false_reference, Reference::StackExpr) && !matches!(false_reference, Reference::None) {
                     func.code.push(Line::Instr(Instr::PushExpr(false_reference)));
                 }
                 func.code.push(Line::Label(end));
             } else {
-                let ref2 = generate_expression(func, naming, &node.children[1])?;
-                let ref1 = generate_expression(func, naming, &node.children[0])?;
+                let ref2 = generate_expression_helper(func, naming, &node.children[1])?;
+                let ref1 = generate_expression_helper(func, naming, &node.children[0])?;
                 match token {
                     Token::Add => {
                         func.code.push(Line::Instr(Instr::Add(ref1, ref2)));
@@ -805,8 +818,7 @@ fn generate_expression(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
             Ok(Reference::StackExpr)
         },
         _ => generate_value(func, naming, node)
-    };
-    res
+    }
 }
 
 fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
@@ -990,7 +1002,8 @@ centre: 250/2;
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            (10;5) -> [@-@],
+            (2;1) ->  [@/@],
+            debug|@|;
         ")).unwrap();
 
 

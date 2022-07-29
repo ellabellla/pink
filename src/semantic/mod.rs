@@ -175,12 +175,15 @@ impl Variable {
 pub struct Scope {
     pub variables: HashMap<String, Variable>,
     id_front: usize,
+    in_expr: bool,
+    pop_count: usize,
+    peeked: bool,
 }
 
 
 impl Scope {
     pub fn new() -> Scope {
-        Scope { variables: HashMap::new(), id_front: 0 }
+        Scope { variables: HashMap::new(), id_front: 0, in_expr: false, pop_count: 0, peeked: false }
     }
 
     pub fn new_id(&mut self) -> usize {
@@ -201,6 +204,73 @@ impl SemanticData {
     pub fn new() -> SemanticData {
         SemanticData { stack: vec![], globals: Scope::new(), call_map: create_call_map() }
     }
+
+    pub fn enter_expr(&mut self) {
+        if let Some(scope) = self.stack.last_mut() {
+            scope.peeked = false;
+            scope.in_expr = true;
+            scope.pop_count = 0;
+        } else {
+            self.globals.peeked = false;
+            self.globals.in_expr = true;
+            self.globals.pop_count = 0;
+        }
+    }
+
+    pub fn exit_expr(&mut self) {
+        if let Some(scope) = self.stack.last_mut() {
+            scope.peeked = false;
+            scope.in_expr = false;
+            scope.pop_count = 0;
+        } else {
+            self.globals.peeked = false;
+            self.globals.in_expr = false;
+            self.globals.pop_count = 0;
+        }
+    }
+
+
+    pub fn in_expr(&mut self) -> bool {
+        if let Some(scope) = self.stack.last_mut() {
+            scope.in_expr
+        } else {
+            self.globals.in_expr 
+        }
+    }
+
+    pub fn pop(&mut self) -> usize {
+        if let Some(scope) = self.stack.last_mut() {
+            scope.peeked = false;
+            let res = scope.pop_count;
+            scope.pop_count += 1;
+            res
+        } else {
+            self.globals.peeked = false;
+            let res = self.globals.pop_count;
+            self.globals.pop_count += 1;
+            res
+        }
+    }
+
+
+    pub fn peek(&mut self) -> usize {
+        if let Some(scope) = self.stack.last_mut() {
+            scope.peeked = true;
+            scope.pop_count
+        } else {
+            self.globals.peeked = true;
+            self.globals.pop_count
+        }
+    }
+
+    pub fn get_pop_count(&mut self) -> usize {
+        if let Some(scope) = self.stack.last_mut() {
+            scope.pop_count
+        } else {
+            self.globals.pop_count
+        }
+    }
+    
 }
 
 
@@ -340,9 +410,26 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
 }
 
 fn validate_expression(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<(), SemanticError> {
+    data.enter_expr();
+    match validate_expression_helper(data, node, pull_through) {
+        Ok(_) => {
+            if data.get_pop_count() != 0 {
+                node.annotations.push(Annotation::StackPop(data.get_pop_count()));
+            }
+            data.exit_expr();
+            Ok(())
+        },
+        Err(err) => {
+            data.exit_expr();
+            Err(err)
+        },
+    }
+}
+
+fn validate_expression_helper(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<(), SemanticError> {
     match node.node_type {
         ASTNodeType::Operator(Token::If) => {
-            validate_expression(data, &mut node.children[0], pull_through)?;
+            validate_expression_helper(data, &mut node.children[0], pull_through)?;
             let len = is!(node.children[1].node_type, "expected a tuple", ASTNodeType::Tuple(len))?;
             if len < 2 {
                 return create_semantic_error!(node, "if requires a tuple with a length of at least 2")
@@ -350,8 +437,8 @@ fn validate_expression(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             validate_tuple(data, &mut node.children[1])
         },
         ASTNodeType::Operator(_) => {
-            validate_expression(data, &mut node.children[0], pull_through)?;
-            validate_expression(data, &mut node.children[1], pull_through)
+            validate_expression_helper(data, &mut node.children[0], pull_through)?;
+            validate_expression_helper(data, &mut node.children[1], pull_through)
         },
         _ => validate_value(data, node, pull_through),
     }
@@ -623,7 +710,7 @@ fn validate_call(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
     }
 
     for i in 0..node.children.len() {
-        validate_expression(data, &mut node.children[i], false)?;
+        validate_expression_helper(data, &mut node.children[i], false)?;
     }
 
     Ok(())
@@ -633,6 +720,17 @@ fn validate_reference(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_thr
     let reference = is!(&node.node_type, "expected reference", ASTNodeType::Reference(reference))?;
     let ident = is!(reference, "expected identifier", Token::Identifier(ident));
     if ident.is_err() {
+        if data.in_expr() {
+            match node.node_type {
+                ASTNodeType::Reference(Token::Pop) => {
+                    node.annotations.push(Annotation::StackIndex(data.pop()));
+                }
+                ASTNodeType::Reference(Token::Peek) => {
+                    node.annotations.push(Annotation::StackIndex(data.peek()));
+                }
+                _ => ()
+            }
+        }
         return Ok(())
     }
     let ident = ident.unwrap();

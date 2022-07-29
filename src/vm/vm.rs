@@ -28,6 +28,7 @@ impl fmt::Display for InstrError {
 pub enum Reference {
     Executable(usize, usize),
     Stack,
+    StackIndex(usize),
     StackExpr,
     StackPeek,
     StackPeekExpr,
@@ -48,12 +49,16 @@ impl Reference {
                 Data::Reference(reference) => reference.resolve(vm),
                 Data::Frame(_, _, _) => Err(InstrError::new("couldn't pop from stack"))
             },
+            Reference::StackIndex(index) => match vm.stack.get(*index).ok_or_else(|| InstrError::new("couldn't get from stack"))? {
+                Data::Reference(reference) => reference.resolve(vm),
+                Data::Frame(_, _, _) => Err(InstrError::new("couldn't get from stack"))
+            },
             Reference::StackPeek => match vm.stack.peek().ok_or_else(|| InstrError::new("couldn't pop from stack"))? {
                 Data::Reference(reference) => reference.resolve(vm),
                 Data::Frame(_, _, _) => Err(InstrError::new("couldn't pop from stack"))
             },
-            Reference::StackExpr => vm.expr_stack.pop().ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone().resolve(vm),
-            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone().resolve(vm),
+            Reference::StackExpr => vm.expr_stack.pop().ok_or_else(|| InstrError::new("couldn't pop from expr stack"))?.clone().resolve(vm),
+            Reference::StackPeekExpr => vm.expr_stack.peek().ok_or_else(|| InstrError::new("couldn't pop from expr stack"))?.clone().resolve(vm),
             Reference::Global(id) =>  {
                 let reference = vm.globals.get(*id).ok_or_else(|| InstrError::new("couldn't pop from stack"))?.clone();
                 reference.resolve(vm)
@@ -77,6 +82,7 @@ impl Reference {
     pub fn to_number(&self, x: usize, y: usize, vm:  &mut VM) -> Result<f64, InstrError> {
         match self {
             Reference::Stack => vm.stack.pop().ok_or(InstrError::new("couldnt pop from stack")).and_then(|data| data.to_number(vm)),
+            Reference::StackIndex(index) => vm.stack.get(*index).ok_or(InstrError::new("couldnt get from stack")).and_then(|data| data.to_number(vm)),
             Reference::StackPeek => vm.stack.peek().ok_or(InstrError::new("couldnt peep from stack")).and_then(|data| data.to_number(vm)),
             Reference::StackExpr => vm.expr_stack.pop().ok_or(InstrError::new("couldnt pop from expr stack"))?.clone().to_number(x,  y, vm),
             Reference::StackPeekExpr => vm.expr_stack.peek().ok_or(InstrError::new("couldnt peep from expr stack"))?.clone().to_number(x, y, vm),
@@ -137,6 +143,8 @@ impl Reference {
                         } else if *header == 'E' {
                             chars.next();
                             return Ok(Reference::StackExpr)
+                        } else if header.is_numeric() {
+                            ref_type = Reference::StackIndex(0);
                         } else {
                             return Ok(Reference::Stack)
                         }
@@ -167,11 +175,14 @@ impl Reference {
             }
 
             if !matches!(ref_type, Reference::None) {
-                chars.next();
+                if !matches!(ref_type, Reference::StackIndex(_)){
+                    chars.next();
+                }
 
                 let index = parse_number(chars)?;
 
                 match ref_type {
+                    Reference::StackIndex(_) => return Ok(Reference::StackIndex(index.floor() as usize)),
                     Reference::Global(_) => return Ok(Reference::Global(index.floor() as usize)),
                     Reference::Argument(_) => return Ok(Reference::Argument(index.floor() as usize)),
                     Reference::Heap(_) => return Ok(Reference::Heap(index.floor() as usize)),
@@ -201,6 +212,7 @@ impl ToString for Reference {
         match self {
             Reference::None => String::from("_"),
             Reference::Stack => String::from("@"),
+            Reference::StackIndex(index) => String::from(format!("@{}", index)),
             Reference::StackExpr => String::from("@E"),
             Reference::StackPeek => String::from("@@"),
             Reference::StackPeekExpr => String::from("@@E"),
@@ -238,10 +250,11 @@ pub enum Instr {
 
     Push(Reference),
     PushExpr(Reference),
-    Pop,
+    Pop(usize),
     PopExpr,
     Duplicate,
     DuplicateExpr,
+    Get(usize),
     StartExpr,
     EndExpr,
 
@@ -331,12 +344,13 @@ impl Instr {
             "COND" => Ok(Instr::Conditional(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "PUSH" => Ok(Instr::Push(Reference::from_str(chars)?)),
             "PSHE" => Ok(Instr::PushExpr(Reference::from_str(chars)?)),
-            "POPE" => Ok(Instr::Pop),
-            "POPX" => Ok(Instr::PopExpr),
+            "POPX" => Ok(Instr::Pop(parse_usize(chars)?)),
+            "POPE" => Ok(Instr::PopExpr),
             "DUPX" => Ok(Instr::Duplicate),
             "DUPE" => Ok(Instr::DuplicateExpr),
             "STEX" => Ok(Instr::StartExpr),
             "EDEX" => Ok(Instr::EndExpr),
+            "GETX" => Ok(Instr::Get(parse_usize(chars)?)),
             "PRLN" => Ok(Instr::PrintLn(Reference::from_str(chars)?)),
             "PRSL" => Ok(Instr::PrintLnString(parse_string(chars)?)),
             "GETM" => Ok(Instr::GetMatrix(Reference::from_str(chars)?, Reference::from_str(chars)?)),
@@ -403,12 +417,13 @@ impl ToString for Instr {
             Instr::Conditional(a,  b, c) => format!("COND {} {} {}", a.to_string(), b.to_string(), c.to_string()),
             Instr::Push(a) => format!("PUSH {}", a.to_string()),
             Instr::PushExpr(a) => format!("PSHE {}", a.to_string()),
-            Instr::Pop => "POPX".to_string(),
+            Instr::Pop(a) => format!("POPX {}", a.to_string()),
             Instr::PopExpr => "POPE".to_string(),
             Instr::Duplicate => "DUPX".to_string(),
             Instr::DuplicateExpr => "DUPE".to_string(),
             Instr::StartExpr => "STEX".to_string(),
             Instr::EndExpr => "EDEX".to_string(),
+            Instr::Get(a) =>  format!("GETX {}", a.to_string()),
             Instr::PrintLn(a) => format!("PRLN {}", a.to_string()),
             Instr::PrintLnString(a) => format!("PRSL \"{}\"", a.to_string()),
             Instr::GetMatrix(a,  b) => format!("GETM {} {}", a.to_string(), b.to_string()),
@@ -629,6 +644,16 @@ mod instr_ops {
 
     pub fn conditional(a: f64, b: f64, c: f64, _vm: &mut VM) -> Result<Option<f64>, InstrError>{
         Ok(Some(if a != 0.0 { b } else { c }))
+    }
+
+    pub fn get(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+        if let Some(Data::Reference(reference)) = vm.stack.get(a) {
+            vm.expr_stack.push(reference);
+            Ok(None)
+        } else {
+            Err(InstrError::new("could not get value in matrix"))
+            
+        }
     }
 
     pub fn println(a: f64, vm: &mut VM) -> Result<Option<f64>, InstrError>{
@@ -857,7 +882,12 @@ impl VM {
                     self.expr_stack.push(reference);
                     Ok(None)
                 },
-                Instr::Pop => {self.stack.pop(); Ok(None)},
+                Instr::Pop(a) => {
+                    for _ in 0..a {
+                        self.stack.pop();
+                    }
+                    Ok(None)
+                },
                 Instr::PopExpr => {self.expr_stack.pop(); Ok(None)},
                 Instr::Duplicate => {
                     if let Some(data) = self.stack.peek() {
@@ -883,6 +913,7 @@ impl VM {
                     self.expr_stack.pop_expr();
                     Ok(None)
                 }
+                Instr::Get(a) => self.eval_unary_op_fixed(a, &instr_ops::get),
                 Instr::PrintLn(a) => self.eval_unary_op(a, &instr_ops::println),
                 Instr::PrintLnString(a) => {self.extern_println.println_str(&a); Ok(None)},
                 Instr::GetMatrix(a, b) => self.eval_binary_op(a, b, &instr_ops::get_matrix),
@@ -995,6 +1026,13 @@ impl VM {
                         Reference::Executable(argc, instr_pointer) => self.execute(argc, instr_pointer)?,
                         Reference::Stack => {
                             if let Some(Data::Reference(reference)) = self.stack.peek() {
+                               reference
+                            } else {
+                                Reference::None
+                            }
+                        },
+                        Reference::StackIndex(index ) => {
+                            if let Some(Data::Reference(reference)) = self.stack.get(index) {
                                reference
                             } else {
                                 Reference::None
@@ -1524,13 +1562,13 @@ mod tests {
             Instr::JumpNotNone(6, Reference::Argument(1)), 
             Instr::Push(Reference::Literal(0.0)), 
             Instr::SetArg(1, Reference::Stack),
-            Instr::Pop,
+            Instr::Pop(1),
             Instr::SetArg(0, Reference::Stack),
             Instr::SetArg(1, Reference::Stack),
             Instr::Push(Reference::Argument(0)), 
             Instr::PopFrame(Reference::Stack),
             Instr::Into(Reference::Executable(2,0), Reference::Matrix),
-            Instr::Pop,
+            Instr::Pop(1),
             ];
         let mut vm = VM::new((250, 250), 0, 100, instrs, 11, Box::new(Printer{}));
         vm.run().unwrap();
@@ -1546,6 +1584,11 @@ mod tests {
         }
         {
             let reference = Reference::Stack;
+            let str = reference.to_string();
+            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+        }
+        {
+            let reference = Reference::StackIndex(1);
             let str = reference.to_string();
             assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
         }
@@ -1703,7 +1746,7 @@ mod tests {
         }
 
         {
-            let instr = Instr::Pop;
+            let instr = Instr::Pop(1);
 
             let str = instr.to_string();
             assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());

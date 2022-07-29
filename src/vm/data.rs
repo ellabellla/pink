@@ -82,6 +82,15 @@ impl Stack {
         }
     }
 
+    pub fn get(&mut self, index: usize) -> Option<Data> {
+        let index = self.stack.len() -1 - index;
+        if index > self.frame_index {
+            self.stack.get(index).map(|d| *d)
+        } else {
+            None
+        }
+    }
+
     pub fn pop(&mut self) -> Option<Data> {
         if matches!(self.stack.last(), Some(Data::Frame(_, _, _))) {
             None
