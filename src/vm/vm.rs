@@ -957,7 +957,6 @@ impl VM {
                 Instr::PushInlineFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_inline_frame),
                 Instr::PopFrame(a) => {
                     let reference = a.resolve(self)?;
-                    println!("{:?}",a);
                     if let Some(instr_pointer) = self.stack.pop_frame() {
                         self.instr_pointer = instr_pointer;
                         self.expr_stack.push(reference);
