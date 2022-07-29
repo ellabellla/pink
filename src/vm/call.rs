@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::create_instr_error;
+
 use super::{Reference, InstrError, VM};
 
 
@@ -7,7 +9,9 @@ pub trait Call {
     fn name(&self) -> String;
     fn argc(&self) -> usize;
     fn any_scope(&self) -> bool;
+    fn takes_str(&self) -> bool;
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>;
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError>;
 }
 
 pub struct SinCall{}
@@ -24,14 +28,23 @@ impl Call for SinCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::sin(num)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
     }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+
 }
 pub struct CosCall{}
 impl Call for CosCall {
@@ -47,13 +60,21 @@ impl Call for CosCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::cos(num)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 
@@ -71,13 +92,21 @@ impl Call for TanCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::tan(num)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 
@@ -95,13 +124,21 @@ impl Call for ABSCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::abs(num)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 
@@ -119,13 +156,21 @@ impl Call for FloorCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::floor(num)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 
@@ -143,13 +188,21 @@ impl Call for CeilCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::ceil(num)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 
@@ -168,6 +221,10 @@ impl Call for PowCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let a = reference.to_number(0, 0, vm)?;
@@ -175,11 +232,15 @@ impl Call for PowCall {
                 let b = reference.to_number(0, 0, vm)?;
                 Ok(Reference::Literal(f64::powf(b, a)))
             } else {
-                Err(InstrError::new("couldn't pop call arg from stack"))
+                create_instr_error!(vm, "couldn't pop call arg from stack")
             }
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 pub struct SqrtCall{}
@@ -196,13 +257,21 @@ impl Call for SqrtCall {
         true
     }
 
+    fn takes_str(&self) -> bool {
+        false
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let a = reference.to_number(0, 0, vm)?;
             Ok(Reference::Literal(f64::sqrt(a)))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
     }
 }
 
@@ -220,13 +289,27 @@ impl Call for DebugCall {
         false
     }
 
+    fn takes_str(&self) -> bool {
+        true
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
             vm.extern_println.println_num(num);
             Ok(Reference::Literal(num))
         } else {
-            Err(InstrError::new("couldn't pop call arg from stack"))
+            create_instr_error!(vm, "couldn't pop call arg from stack")
+        }
+    }
+
+    fn call_str(&self, string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        if let Some(reference) = vm.expr_stack.pop() {
+            let num = reference.to_number(0, 0, vm)?;
+            vm.extern_println.println_str(&format!("{} ({})", string, num));
+            Ok(Reference::Literal(num))
+        } else {
+            create_instr_error!(vm, "couldn't pop call arg from stack")
         }
     }
 }

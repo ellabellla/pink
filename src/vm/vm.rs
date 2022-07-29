@@ -329,6 +329,7 @@ pub enum Instr {
     ForEachRange(Reference, Reference, Reference, Reference),    
 
     Call(usize),
+    CallStr(usize, String),
 }
 
 
@@ -413,6 +414,7 @@ impl Instr {
             "FREH" => Ok(Instr::ForEach(Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "FRRG" => Ok(Instr::ForEachRange(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "CALL" => Ok(Instr::Call(parse_usize(chars)?)),
+            "CALS" => Ok(Instr::CallStr(parse_usize(chars)?, parse_string(chars)?)),
             _ => Err(InstrError::new("couldn't parse instr"))
         }
 
@@ -486,6 +488,7 @@ impl ToString for Instr {
             Instr::ForEach(a, b) => format!("FREH {} {}", a.to_string(), b.to_string()),
             Instr::ForEachRange(a, b, c, d) => format!("FRRG {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
             Instr::Call(a) => format!("CALL {}", a.to_string()),
+            Instr::CallStr(a, b) => format!("CALS {} \"{}\"", a.to_string(), b.to_string()),
         }
     }
 }
@@ -838,7 +841,7 @@ pub struct VM {
     pub stack: Stack,
     pub expr_stack: ExprStack,
     instrs: Vec<Instr>,
-    instr_pointer: usize,
+    pub instr_pointer: usize,
     pub heap: HashMap<usize, Reference>,
     pub extern_println: Box<dyn ExternPrintLn>,
 }
@@ -1406,6 +1409,15 @@ impl VM {
                 Instr::Call(a) => {
                     if let Some(call) = CALLS.get(a) {
                         let reference = call.call(self)?;
+                        self.expr_stack.push(reference);
+                        Ok(None)
+                    } else {
+                        create_instr_error!(self, "couldn't resolve call")
+                    }
+                },
+                Instr::CallStr(a, b) => {
+                    if let Some(call) = CALLS.get(a) {
+                        let reference = call.call_str( &b, self)?;
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
@@ -2066,6 +2078,13 @@ mod tests {
             
         {
             let instr = Instr::Call(0);
+
+            let str = instr.to_string();
+            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
+        }
+            
+        {
+            let instr = Instr::CallStr(0,"hello".to_string());
 
             let str = instr.to_string();
             assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());

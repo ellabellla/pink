@@ -22,6 +22,7 @@ pub enum ASTNodeType {
     Into,
 
     Call(String),
+    CallStr(String, String),
 
     ExpressionList(usize),
     Push,

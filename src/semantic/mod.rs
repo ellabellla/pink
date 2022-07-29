@@ -376,6 +376,10 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             } {
                 return create_semantic_error!(node, "definition cannot change type");
             }
+
+            if data.stack.len() != 0 {
+                return create_semantic_error!(node, "global variables can only be changed in the global scope");
+            }
         }
         node.children[0].annotations.push(Annotation::GlobalId(variable.id));
         if matches!(variable.var_type, VariableType::Executable) {
@@ -389,6 +393,17 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         }
     } else if let Some(scope) = data.stack.last_mut() {
         if let Some(variable) = scope.variables.get(ident) {
+            if !init {
+                if match var_type {
+                    VariableType::Number => !matches!(variable.var_type, VariableType::Number),
+                    VariableType::Executable => !matches!(variable.var_type, VariableType::Executable),
+                    VariableType::ExpressionList => !matches!(variable.var_type, VariableType::ExpressionList),
+                    VariableType::Tuple => !matches!(variable.var_type, VariableType::Tuple),
+                    VariableType::Matrix => !matches!(variable.var_type, VariableType::Matrix),
+                } {
+                    return create_semantic_error!(node, "definition cannot change type");
+                }
+            }
             node.children[0].annotations.push(Annotation::Id(variable.id));
             if matches!(variable.var_type, VariableType::Executable) {
                 if let Some(argc) = variable.argc {
@@ -448,6 +463,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::ExpressionList(_) => validate_expression_list(data, node),
         ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Call(_) => validate_call(data, node),
+        ASTNodeType::CallStr(_,_) => validate_call(data, node),
         ASTNodeType::Reference(_) => {
             let var_type = VariableType::node_to_type(data, node);
             if matches!(var_type, Ok(VariableType::Tuple)) ||
@@ -686,8 +702,10 @@ fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<
 }
 
 fn validate_call(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
-    let ident = if let ASTNodeType::Call(ident) = &node.node_type {
-        ident
+    let (string, ident) = if let ASTNodeType::Call(ident) = &node.node_type {
+        (false, ident)
+    } else if let ASTNodeType::CallStr(ident, _) = &node.node_type {
+        (true, ident)
     } else {
         create_semantic_error!(node, "expected call")?
     };
@@ -700,6 +718,10 @@ fn validate_call(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
 
     if !call.any_scope() && data.stack.len() != 0{
         create_semantic_error!(node,  "call can only be called from global scope")?
+    }
+
+    if string && !call.takes_str() {
+        create_semantic_error!(node,  "call cannot take a string")?
     }
 
     let argc = call.argc();

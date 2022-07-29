@@ -55,12 +55,11 @@ token_lookup!(
     (_, Undefined)
 );
 
-pub const TOKEN_STRING_START: &str = "\"[";
-pub const TOKEN_STRING_END: &str = "]";
-pub const TOKEN_STRING_ESCAPE: [(char, char); 5] = [
+pub const TOKEN_STRING_START: &str = "\"";
+pub const TOKEN_STRING_END: &str = "\"";
+pub const TOKEN_STRING_ESCAPE: [(char, char); 4] = [
     ('n', '\n'),
     ('r', '\r'),
     ('t', '\t'),
-    (']', ']'),
     ('\\', '\\'),
 ];

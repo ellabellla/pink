@@ -357,6 +357,7 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
         ASTNodeType::Indexed => generate_indexed(func, naming, node),
         ASTNodeType::Reference(_) => generate_reference(func, naming, node),
         ASTNodeType::Call(_) => generate_call(func, naming, node),
+        ASTNodeType::CallStr(_,_) => generate_call(func, naming, node),
         ASTNodeType::Number(num) => Ok(Reference::Literal(num)),
         _ => create_generation_error!(node, "invalid value in expression")
     }
@@ -465,10 +466,10 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
             }
         },
         ASTNodeType::Reference(_) => {
-            match generate_reference(func, naming, node)? {
+            match generate_reference(func, naming, &node.children[0])? {
                 Reference::Tuple(id) => Reference::Tuple(id),
                 Reference::Matrix => Reference::Matrix,
-                _=> return create_generation_error!(node, "expected reference to be a tuple or matrix"),
+                _=> return create_generation_error!(node.children[0], "expected reference to be a tuple or matrix"),
             }
         }
         _ => return create_generation_error!(node.children[0], "invalid lhs for extended exec"),
@@ -728,8 +729,10 @@ fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode
 }
 
 fn generate_call(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    let ident = if let ASTNodeType::Call(ident) = &node.node_type {
-        ident
+    let (string, ident) = if let ASTNodeType::Call(ident) = &node.node_type {
+        (None, ident)
+    } else if let  ASTNodeType::CallStr(ident, string) = &node.node_type {
+        (Some(string), ident)
     } else {
         return create_generation_error!(node, "couldn't generate call")
     };
@@ -747,12 +750,18 @@ fn generate_call(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) 
         }
     }
 
-    func.code.push(Line::Instr(Instr::Call(id)));
+    if let Some(string) = string {
+        func.code.push(Line::Instr(Instr::CallStr(id, string.clone())));
+
+    } else {
+        func.code.push(Line::Instr(Instr::Call(id)));
+    }
 
     Ok(Reference::StackExpr)
 }
 
 fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
+    println!("{:?}", node.node_type);
     let reference = if let ASTNodeType::Reference(reference) = &node.node_type {
         reference
     } else {
@@ -1066,8 +1075,8 @@ centre: 250/2;
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        func:{0;10}<*[@@; @],
-        debug|@|;
+        x:(10);
+        x<-[1];
         ")).unwrap();
 
 
