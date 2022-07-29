@@ -340,18 +340,13 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         ASTNodeType::Into => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[1]),
         _ => validate_expression(data, &mut node.children[1], pull_through),
-    }.or_else(|_| {
-        if !matches!(set_type, Token::Set) {
-            if !matches!(var_type, VariableType::Number) {
-                create_semantic_error!(node, "only numbers may be set with an operator")
-            } else {
-                Ok(())
-            }
-        } else {
-            Ok(())
-        }
-    });
+    };
 
+    if !matches!(set_type, Token::Set) {
+        if !matches!(var_type, VariableType::Number) {
+            create_semantic_error!(node, "only numbers may be set with an operator")?
+        }
+    }
 
     let reference = is!(&node.children[0].node_type, "expected identifier in definition", ASTNodeType::Reference(reference))?;
     let ident = is!(reference, "expected identifier in definition", Token::Identifier(ident))?;
