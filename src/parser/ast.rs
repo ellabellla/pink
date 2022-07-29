@@ -64,6 +64,8 @@ pub enum Annotation {
     PullThrough(usize),
     Scope(usize),
     DebugInfo(usize, usize),
+    Return,
+    Exit,
 }
 
 impl Annotation {

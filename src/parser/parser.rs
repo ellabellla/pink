@@ -394,7 +394,11 @@ fn parse_expression(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         operator.children.push(lhs);
         operator.children.push(rhs);
         lhs = operator;
-    }  
+    }
+
+    if is_next_continue!(parser.tokenizer, Token::Return).is_ok() {
+        lhs.annotations.push(Annotation::Return);
+    }
 
     Ok(lhs)
 }

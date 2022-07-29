@@ -3,7 +3,8 @@ use token_lookup_macro::token_lookup;
 token_lookup!(
     ("true", True),
     ("false", False),
-    
+
+    ("not", Not),
     ("and", And),
     ("or", Or),
     ("xor", Xor),
@@ -12,6 +13,7 @@ token_lookup!(
     ("@", Pop),
     ("#", Matrix),
     ("|", Call)
+    ("!", Return),
 
     ("?", If),
     ("<-", Into),
@@ -21,7 +23,6 @@ token_lookup!(
 
     (":", Set),
 
-    ("!", Not),
     ("+", Add),
     ("-", Subtract),
     ("*", Multiply),

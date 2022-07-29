@@ -9,6 +9,7 @@ peek = "@@";
 pop = "@";
 matrix = "#";
 call = "|";
+return = "!";
 
 if = "?";
 into = "<-";
@@ -50,7 +51,7 @@ operator_3rd = less_equ | great_equ | less | great | equ;
 operator_4th = and | or | xor;
 operator_5th = if;
 
-expression = expression_4th (operator_5th tuple)*;
+expression = (expression_4th (operator_5th tuple)*) return?;
 expression_4th = expression_3rd (operator_4th expression_3rd)*;
 expression_3rd = expression_2nd (operator_3rd expression_2nd)*;
 expression_2nd = expression_1st (operator_2nd expression_1st)*;

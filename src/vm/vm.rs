@@ -330,6 +330,8 @@ pub enum Instr {
 
     Call(usize),
     CallStr(usize, String),
+
+    Exit,
 }
 
 
@@ -415,6 +417,7 @@ impl Instr {
             "FRRG" => Ok(Instr::ForEachRange(Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?, Reference::from_str(chars)?)),
             "CALL" => Ok(Instr::Call(parse_usize(chars)?)),
             "CALS" => Ok(Instr::CallStr(parse_usize(chars)?, parse_string(chars)?)),
+            "EXIT" => Ok(Instr::Exit),
             _ => Err(InstrError::new("couldn't parse instr"))
         }
 
@@ -489,6 +492,7 @@ impl ToString for Instr {
             Instr::ForEachRange(a, b, c, d) => format!("FRRG {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
             Instr::Call(a) => format!("CALL {}", a.to_string()),
             Instr::CallStr(a, b) => format!("CALS {} \"{}\"", a.to_string(), b.to_string()),
+            Instr::Exit => "EXIT".to_string(),
         }
     }
 }
@@ -729,7 +733,7 @@ mod instr_ops {
         Ok(Some(vm.matrix.height() as f64))
     }
     pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
-        vm.stack.push(Data::Frame(a, 0, vm.instr_pointer+1));
+        vm.stack.push(Data::Frame(a, 0, vm.instr_pointer));
         vm.instr_pointer = b;
         Ok(None)
     }
@@ -948,6 +952,7 @@ impl VM {
                 Instr::PushInlineFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_inline_frame),
                 Instr::PopFrame(a) => {
                     let reference = a.resolve(self)?;
+                    println!("{:?}",a);
                     if let Some(instr_pointer) = self.stack.pop_frame() {
                         self.instr_pointer = instr_pointer;
                         self.expr_stack.push(reference);
@@ -1434,6 +1439,10 @@ impl VM {
                     } else {
                         create_instr_error!(self, "couldn't resolve call")
                     }
+                },
+                Instr::Exit => {
+                    self.instr_pointer = self.instrs.len();
+                    Ok(None)
                 }
             };
 

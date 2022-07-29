@@ -427,6 +427,20 @@ fn validate_expression(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
                 node.annotations.push(Annotation::StackPop(data.get_pop_count()));
             }
             data.exit_expr();
+
+            if data.stack.last().is_none() {
+                let mut index = None;
+                for i in 0..node.annotations.len() {
+                    if matches!(node.annotations[i], Annotation::Return) {
+                        index = Some(i);
+                        break;
+                    }
+                }
+                if let Some(index) = index {
+                    node.annotations.remove(index);
+                    node.annotations.push(Annotation::Exit)
+                }
+            }
             Ok(())
         },
         Err(err) => {
@@ -438,6 +452,7 @@ fn validate_expression(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
 
 fn validate_expression_helper(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<(), SemanticError> {
     match node.node_type {
+        ASTNodeType::Operator(Token::Not) => Ok(()),
         ASTNodeType::Operator(Token::If) => {
             validate_expression_helper(data, &mut node.children[0], pull_through)?;
             let len = is!(node.children[1].node_type, "expected a tuple", ASTNodeType::Tuple(len))?;
