@@ -1009,6 +1009,7 @@ impl VM {
                         let b = b.to_number(0, 0, self)?;
                         if let Some(references) = self.tuples.get(&id) {
                             if let Some(reference) = references.get(b.floor() as usize) {
+                                println!("{:?}", reference);
                                 self.expr_stack.push(*reference);
                                 Ok(None)
                             } else {
@@ -1023,6 +1024,7 @@ impl VM {
                 },
                 Instr::SetTuple(a, b, c) => {
                     let b = b.to_number(0, 0, self)?;
+                    let c = c.resolve(self)?;
                     if let Some(references) = self.tuples.get_mut(&a) {
                         if let Some(reference) = references.get_mut(b.floor() as usize) {
                             *reference = c;
@@ -1155,14 +1157,14 @@ impl VM {
                                     (self.matrix.width(), self.matrix.height())
                                 };
 
-                                for _ in 0..argc {
-                                    self.stack.push(Data::Reference(Reference::None));
-                                }
-
                                 let mut acc = 0.0;
 
                                 for y in 0..height {
                                     for x in 0..width {
+                                        for _ in 0..argc {
+                                            self.stack.push(Data::Reference(Reference::None));
+                                        }
+
                                         let num = self.matrix.get(x, y).unwrap();
                                         let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
@@ -1189,12 +1191,13 @@ impl VM {
                                         tuple.len()
                                     };
 
-                                    for _ in 0..argc {
-                                        self.stack.push(Data::Reference(Reference::None));
-                                    }
                                     let mut acc = 0.0;
 
                                     for x in 0..len {
+                                        for _ in 0..argc {
+                                            self.stack.push(Data::Reference(Reference::None));
+                                        }
+
                                         let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
                                         let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
@@ -1229,11 +1232,12 @@ impl VM {
                         let c = c.floor() as usize;
                         let d = d.floor() as usize;
 
-                        for _ in 0..argc {
-                            self.stack.push(Data::Reference(Reference::None));
-                        }
                         let mut acc = 0.0;
                         for x in (b..c).step_by(d) {
+                            for _ in 0..argc {
+                                self.stack.push(Data::Reference(Reference::None));
+                            }
+
                             let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                 vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                 vm.stack.push(Data::Reference(Reference::Literal(acc)));
@@ -1259,12 +1263,13 @@ impl VM {
                                     (self.matrix.width(), self.matrix.height())
                                 };
 
-                                for _ in 0..argc {
-                                    self.stack.push(Data::Reference(Reference::None));
-                                }
 
                                 for y in 0..height {
                                     for x in 0..width {
+                                        for _ in 0..argc {
+                                            self.stack.push(Data::Reference(Reference::None));
+                                        }
+                                        
                                         let num = self.matrix.get(x, y).unwrap();
                                         let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
@@ -1289,16 +1294,18 @@ impl VM {
                                         tuple.len()
                                     };
 
-                                    for _ in 0..argc {
-                                        self.stack.push(Data::Reference(Reference::None));
-                                    }
-
                                     for x in 0..len {
+                                        for _ in 0..argc {
+                                            self.stack.push(Data::Reference(Reference::None));
+                                        }
+
                                         let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
                                         let reference = self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
                                             vm.stack.push(Data::Reference(reference));
                                         })?;
+                                        
+                                        let reference = reference.resolve(self)?;
 
                                         *self.tuples.get_mut(&id).unwrap().get_mut(x).unwrap() = reference;
                                     }
@@ -1323,12 +1330,13 @@ impl VM {
                                     (self.matrix.width(), self.matrix.height())
                                 };
 
-                                for _ in 0..argc {
-                                    self.stack.push(Data::Reference(Reference::None));
-                                }
 
                                 for y in 0..height {
                                     for x in 0..width {
+                                        for _ in 0..argc {
+                                            self.stack.push(Data::Reference(Reference::None));
+                                        }
+
                                         let num = self.matrix.get(x, y).unwrap();
                                         self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(y as f64)));
@@ -1350,8 +1358,11 @@ impl VM {
                                         tuple.len()
                                     };
 
-
                                     for x in 0..len {
+                                        for _ in 0..argc {
+                                            self.stack.push(Data::Reference(Reference::None));
+                                        }
+
                                         let reference = self.tuples.get(&id).unwrap().get(x).unwrap().clone();
                                         self.execute_inline(argc, instr_pointer, &mut|vm| {
                                             vm.stack.push(Data::Reference(Reference::Literal(x as f64)));
