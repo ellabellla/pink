@@ -298,7 +298,7 @@ fn validate_statement(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resul
     }
     Ok(())
 }
-// name: 1000 + 200;
+
 fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool, allow_creation: bool) -> Result<(), SemanticError> {
     let set_type = is!(&node.node_type, "expected definition", ASTNodeType::Set(set_type))?;
     let var_type = VariableType::node_to_type(data, &node.children[1])?;
@@ -702,6 +702,10 @@ fn validate_call(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(),
     } else {
         create_semantic_error!(node, "call type could not be found")?
     };
+
+    if !call.any_scope() && data.stack.len() != 0{
+        create_semantic_error!(node,  "call can only be called from global scope")?
+    }
 
     let argc = call.argc();
 

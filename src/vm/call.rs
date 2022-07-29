@@ -6,6 +6,7 @@ use super::{Reference, InstrError, VM};
 pub trait Call {
     fn name(&self) -> String;
     fn argc(&self) -> usize;
+    fn any_scope(&self) -> bool;
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>;
 }
 
@@ -17,6 +18,10 @@ impl Call for SinCall {
 
     fn argc(&self) -> usize {
         1
+    }
+
+    fn any_scope(&self) -> bool {
+        true
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
@@ -36,6 +41,10 @@ impl Call for CosCall {
 
     fn argc(&self) -> usize {
         1
+    }
+
+    fn any_scope(&self) -> bool {
+        true
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
@@ -58,6 +67,10 @@ impl Call for TanCall {
         1
     }
 
+    fn any_scope(&self) -> bool {
+        true
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
@@ -76,6 +89,10 @@ impl Call for ABSCall {
 
     fn argc(&self) -> usize {
         1
+    }
+
+    fn any_scope(&self) -> bool {
+        true
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
@@ -98,6 +115,10 @@ impl Call for FloorCall {
         1
     }
 
+    fn any_scope(&self) -> bool {
+        true
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let num = reference.to_number(0, 0, vm)?;
@@ -116,6 +137,10 @@ impl Call for CeilCall {
 
     fn argc(&self) -> usize {
         1
+    }
+
+    fn any_scope(&self) -> bool {
+        true
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
@@ -137,6 +162,10 @@ impl Call for PowCall {
 
     fn argc(&self) -> usize {
         2
+    }
+
+    fn any_scope(&self) -> bool {
+        true
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
@@ -163,6 +192,10 @@ impl Call for SqrtCall {
         1
     }
 
+    fn any_scope(&self) -> bool {
+        true
+    }
+
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
         if let Some(reference) = vm.expr_stack.pop() {
             let a = reference.to_number(0, 0, vm)?;
@@ -181,6 +214,10 @@ impl Call for DebugCall {
 
     fn argc(&self) -> usize {
         1
+    }
+
+    fn any_scope(&self) -> bool {
+        false
     }
 
     fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
