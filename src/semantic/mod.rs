@@ -121,7 +121,7 @@ pub enum VariableType {
 
 
 impl VariableType {
-    pub fn node_to_type(data: &SemanticData, node: &Box<ASTNode>) -> Result<VariableType, SemanticError> {
+    pub fn node_to_type(data: &SemanticData, node: &Box<ASTNode>, pull_through: bool) -> Result<VariableType, SemanticError> {
         match &node.node_type {
             ASTNodeType::Operator(_) => Ok(VariableType::Number),
             ASTNodeType::Exec => Ok(VariableType::Executable),
@@ -142,6 +142,12 @@ impl VariableType {
                     } else if let Some(scope) = data.stack.last() {
                         if let  Some(variable) = scope.variables.get(ident) {
                             return Ok(variable.var_type)
+                        } else if pull_through {
+                            if let Some(scope) = data.stack.get(data.stack.len()-2){
+                                if let  Some(variable) = scope.variables.get(ident) {
+                                    return Ok(variable.var_type)
+                                }
+                            }
                         }
                     }
                     create_semantic_error!(node, "variable value type could not be determined at compilation")
@@ -301,7 +307,7 @@ fn validate_statement(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Resul
 
 fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool, allow_creation: bool) -> Result<(), SemanticError> {
     let set_type = is!(&node.node_type, "expected definition", ASTNodeType::Set(set_type))?;
-    let var_type = VariableType::node_to_type(data, &node.children[1])?;
+    let var_type = VariableType::node_to_type(data, &node.children[1], pull_through)?;
 
     let mut init = false;
     {
@@ -480,7 +486,7 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Call(_) => validate_call(data, node),
         ASTNodeType::CallStr(_,_) => validate_call(data, node),
         ASTNodeType::Reference(_) => {
-            let var_type = VariableType::node_to_type(data, node);
+            let var_type = VariableType::node_to_type(data, node, pull_through);
             if matches!(var_type, Ok(VariableType::Tuple)) ||
                 matches!(var_type, Ok(VariableType::Matrix)) {
                     return create_semantic_error!(node, "reference cannot be to a tuple or matrix in an expression")
