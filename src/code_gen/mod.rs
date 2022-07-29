@@ -393,11 +393,11 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
         }
         Ok(inner_func.id)
     } else {
-        let outer_argc = func_tuple_ret;
         if let Ok(id) = get_annotation!(node.children[1], "", Annotation::GlobalId(_id)) {
             let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
-            if outer_argc < argc {
-                for _ in 0..argc-outer_argc {
+            func.code.append(&mut inner_func.code);
+            if inner_func.argc < argc {
+                for _ in 0..argc-inner_func.argc {
                     func.code.push(Line::Instr(Instr::Push(Reference::None)));
                 }
             }
@@ -406,8 +406,9 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
             Ok(func.id)
         } else if let Ok(id) = get_annotation!(node.children[1], "", Annotation::Id(_id)) {
             let argc = *get_annotation!(node.children[1], "expected executable to take args", Annotation::Argc(_args))?;
-            if outer_argc < argc {
-                for _ in 0..argc-outer_argc {
+            func.code.append(&mut inner_func.code);
+            if inner_func.argc < argc {
+                for _ in 0..argc-inner_func.argc {
                     func.code.push(Line::Instr(Instr::Push(Reference::None)));
                 }
             }
@@ -418,7 +419,6 @@ fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: 
             let reference = generate_expression_list(&mut inner_func, naming, &node.children[1])?;
             func.code.push(Line::Call(func_id));
             inner_func.ret = reference;
-            inner_func.argc = outer_argc;
             Ok(inner_func.id)
         } else{
             unreachable!("failed to validate exec");
@@ -561,22 +561,28 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
             if matches!(node.children[i].node_type, ASTNodeType::Throw) {
                 continue;
             }
-            if generate_func_definition(is_eval, func, naming, &node.children[i]).is_ok() {
-                if !is_ref {
-                    arg_index += 1;
-                }
-            } else {
+            if is_ref {
                 let reference = generate_expression(&mut inner_func, naming, &node.children[i])?;
-                
+                    
                 if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                     inner_func.code.push(Line::Instr(Instr::Push(reference)));
                 }
-                if is_ref {
+
+                arg_index += 1;
+            } else {
+                if generate_func_definition(is_eval, func, naming, &node.children[i]).is_ok() {
                     arg_index += 1;
-                }
-            } 
+                } else {
+                    let reference = generate_expression(&mut inner_func, naming, &node.children[i])?;
+                    
+                    if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
+                        inner_func.code.push(Line::Instr(Instr::Push(reference)));
+                    }
+                } 
+            }
         }
         let id = inner_func.id;
+        inner_func.argc = arg_index;
         func.funcs.insert(inner_func.id, inner_func);
         Ok(id)
     } else {
