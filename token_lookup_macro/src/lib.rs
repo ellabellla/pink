@@ -100,7 +100,7 @@ pub fn token_lookup(input: proc_macro::TokenStream) ->  proc_macro::TokenStream 
 
 
 
-    eprintln!("Tokens: {}", stream);
+    //eprintln!("Tokens: {}", stream);
     stream
 }
 
