@@ -224,3 +224,7 @@ All external calls will resolve to some value.
 - `debug`
   - one param and optional string
   - prints value to the console
+
+## License
+
+This software is provided under the MIT license. Click [here](./LICENSE) to view.
