@@ -32,7 +32,6 @@ pub enum ASTNodeType {
 
     Matrix,
     Tuple(usize),
-    TupleConstructor,
 
     Indexed,
     

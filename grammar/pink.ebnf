@@ -44,7 +44,7 @@ number = digit+ ('.' digit*)? | '.' digit+;
 identifier = (alpha | '_') (alpha | digit | '_')*;
 
 reference = identifier | pop | peek | ident call string? expression (';' expression) call;
-value = number | not number | true | false | tuple_constructor | tuple | indexed_value | reference | exec | reduce | for_each | into;
+value = number | not number | true | false | indexed_value | reference | exec | reduce | for_each | into;
 operator_1st = mul | div;
 operator_2nd = add | sub;
 operator_3rd = less_equ | great_equ | less | great | equ;
@@ -58,23 +58,22 @@ expression_2nd = expression_1st (operator_2nd expression_1st)*;
 expression_1st = expression_value (operator_1st expression_value)*;
 expression_value = value;
 
-definition = identifier setters (tuple_constructor | expression | value_tuple);
-strict_definition = identifier set (tuple_constructor | expression | value_tuple);
+definition = identifier setters expression;
+strict_definition = identifier set expression;
 
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
 exec = expression_list | (tuple exec (expression_list | identifier));
-into = (tuple_constructor | matrix| value_tuple | reference) into exec;
-for_each = (matrix| value_tuple | reference | range) into_exec exec;
-reduce = (matrix| value_tuple | reference | range) reduce_exec exec;
+into = matrix into exec;
+for_each = (matrix | range) into_exec exec;
+reduce = (matrix | range) reduce_exec exec;
 
 tuple = '(' ((strict_definition | expression) (';' (strict_definition | expression))*)? ')';
 value_tuple = '(' (expression (';' expression)*)? ')';
 
-indexed_value = (matrix | reference) index;
+indexed_value = matrix index;
 index = '(' expression (',' expression)? ')';
 range = '{' expression ';' expression (';' expression)? '}';
-tuple_constructor = '(' '{' expression '}' ')';
 
 statement = (definition | expression) (',' | ';');
 

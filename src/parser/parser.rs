@@ -303,10 +303,6 @@ fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Ok(Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if let Ok(node) = parse_exec(parser) {
         return Ok(node)
-    } else if let Ok(node) = parse_tuple_constructor(parser) {
-        return Ok(node)
-    } else if let Ok(node) = parse_tuple(parser) {
-        return Ok(node)
     } else if let Ok(node) = parse_reduce(parser) {
         return Ok(node)
     } else if let Ok(node) = parse_for_each(parser) {
@@ -492,7 +488,7 @@ fn parse_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let identifier = is_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
     let mut setter: Box<ASTNode> = get_or_fallback!(parser.tokenizer, fallback, parse_setters)?;
     setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))));
-    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta, expression or tuple", fallback, parse_tuple_constructor, parse_expression, parse_value_tuple)?;
+    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta, expression or tuple", fallback, parse_expression)?;
     setter.children.push(expression);
 
     Ok(setter)
@@ -504,7 +500,7 @@ fn parse_strict_definition(parser: &mut Parser) -> Result<Box<ASTNode>, ParseErr
     let identifier = is_next!(parser.tokenizer, fallback, Token::Identifier(_ident))?;
     setter.children.push(Box::new(ASTNode::new(ASTNodeType::Reference(identifier),  vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))));
     is_next!(parser.tokenizer, fallback, Token::Set)?;
-    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta, expression or tuple", fallback, parse_tuple_constructor, parse_expression, parse_value_tuple)?;
+    let expression: Box<ASTNode> = or!(parser.tokenizer, "expected meta, expression or tuple", fallback, parse_expression)?;
     setter.children.push(expression);
 
     Ok(setter)
@@ -595,7 +591,7 @@ fn parse_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn  parse_into(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let data = or!(parser.tokenizer, "expected a tuple or reference", fallback, parse_tuple_constructor, parse_matrix, parse_value_tuple, parse_reference)?;
+    let data = or!(parser.tokenizer, "expected a tuple or reference", fallback, parse_matrix)?;
     is_next!(parser.tokenizer, fallback, Token::Into)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
@@ -604,7 +600,7 @@ fn  parse_into(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn  parse_for_each(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_matrix, parse_value_tuple, parse_reference, parse_range)?;
+    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_matrix, parse_range)?;
     is_next!(parser.tokenizer, fallback, Token::ForEach)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
@@ -613,7 +609,7 @@ fn  parse_for_each(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
 fn  parse_reduce(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_matrix, parse_value_tuple, parse_reference, parse_range)?;
+    let data = or!(parser.tokenizer, "expected a range, tuple or reference", fallback, parse_matrix, parse_range)?;
     is_next!(parser.tokenizer, fallback, Token::Reduce)?;
     let exec =get_or_fallback!(parser.tokenizer, fallback, parse_exec)?;
 
@@ -628,7 +624,7 @@ fn  parse_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
     let mut children = vec![];
     let mut size = 0;
-    if let Ok(node) = or_continue!(parser.tokenizer, "expected an expression or strict definition", parse_tuple_constructor, parse_strict_definition, parse_expression, parse_value_tuple) {
+    if let Ok(node) = or_continue!(parser.tokenizer, "expected an expression or strict definition", parse_strict_definition, parse_expression) {
         children.push(node);
         size += 1;
     } else if is_next_continue!(parser.tokenizer, Token::CloseParentheses).is_ok() {
@@ -649,7 +645,7 @@ fn  parse_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         }
         
         size += 1;
-        children.push(or!(parser.tokenizer, "expected an expression or strict definition", fallback, parse_tuple_constructor, parse_strict_definition, parse_expression, parse_value_tuple)?);
+        children.push(or!(parser.tokenizer, "expected an expression or strict definition", fallback, parse_strict_definition, parse_expression)?);
     }
 }
 
@@ -661,7 +657,7 @@ fn  parse_value_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
 
     let mut children = vec![];
     let mut size = 0;
-    if let Ok(node) = or_continue!(parser.tokenizer, "expected an expression or strict definition", parse_tuple_constructor, parse_expression, parse_value_tuple) {
+    if let Ok(node) = or_continue!(parser.tokenizer, "expected an expression or strict definition", parse_expression) {
         children.push(node);
         size += 1;
     } else if is_next_continue!(parser.tokenizer, Token::CloseParentheses).is_ok() {
@@ -682,13 +678,13 @@ fn  parse_value_tuple(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         }
         
         size += 1;
-        children.push(or!(parser.tokenizer, "expected an expression or strict definition", fallback, parse_tuple_constructor, parse_expression, parse_value_tuple)?);
+        children.push(or!(parser.tokenizer, "expected an expression or strict definition", fallback, parse_expression)?);
     }
 }
 
 fn parse_indexed_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();
-    let reference = or!(parser.tokenizer, "expected a matrix or reference", fallback, parse_matrix parse_reference)?;
+    let reference = or!(parser.tokenizer, "expected a matrix or reference", fallback, parse_matrix)?;
     let meta = get_or_fallback!(parser.tokenizer, fallback, parse_index)?;
 
     Ok(Box::new(ASTNode::new(ASTNodeType::Indexed,  vec![reference, meta], Annotation::pos_to_debug(parser.tokenizer.pos()))))
@@ -746,22 +742,6 @@ fn parse_index(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     is_next!(parser.tokenizer, fallback, Token::CloseParentheses)?;
 
     Ok(Box::new(ASTNode::new(ast_type, children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
-}
-
-fn parse_tuple_constructor(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
-    let fallback = parser.tokenizer.pos();
-    is_next!(parser.tokenizer, fallback, Token::OpenParentheses)?;
-    is_next!(parser.tokenizer, fallback, Token::OpenBrace)?;
-    
-    let mut children = vec![];
-    
-    children.push(get_or_fallback!(parser.tokenizer, fallback, parse_expression)?);
-
-    is_next!(parser.tokenizer, fallback, Token::CloseBrace)?;
-    is_next!(parser.tokenizer, fallback, Token::CloseParentheses)?;
-
-    Ok(Box::new(ASTNode::new(ASTNodeType::TupleConstructor, children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
-
 }
 
 fn parse_statement(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {

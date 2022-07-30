@@ -100,7 +100,6 @@ pub enum Line {
 
 struct Naming {
     func_id_front: usize,
-    tuple_id_front: usize,
     label_id_front: usize,
     heap_id_front: usize,
     call_map: HashMap<String, (usize, &'static dyn Call)>,
@@ -108,17 +107,12 @@ struct Naming {
 
 impl Naming {
     pub fn new() -> Naming {
-        Naming { func_id_front: 0, tuple_id_front: 0, label_id_front: 0, heap_id_front: 0, call_map: create_call_map() }
+        Naming { func_id_front: 0, label_id_front: 0, heap_id_front: 0, call_map: create_call_map() }
     }
 
     pub fn new_func_id(&mut self) -> usize {
         self.func_id_front += 1;
         self.func_id_front - 1
-    }
-
-    pub fn new_tuple_id(&mut self) -> usize {
-        self.tuple_id_front += 1;
-        self.tuple_id_front - 1
     }
 
     pub fn new_label_id(&mut self) -> usize {
@@ -138,19 +132,17 @@ struct Function {
     code: Vec<Line>,
     funcs: HashMap<usize, Function>,
     heap: Vec<usize>,
-    tuples: Vec<usize>,
     ret: Reference,
 }
 
 impl Function {
     pub fn new(args:usize, id: usize) -> Function {
-        Function { id, argc: args, code: vec![], funcs: HashMap::new(), heap: vec![], tuples: vec![], ret: Reference::None }
+        Function { id, argc: args, code: vec![], funcs: HashMap::new(), heap: vec![], ret: Reference::None }
     }
 }
 
 pub struct Code {
     global: Function,
-    tuple_name_space: usize,
 }
 
 impl Code {
@@ -158,15 +150,12 @@ impl Code {
         let mut naming = Naming::new();
         let mut code = Code{
             global: Function::new(0, naming.new_func_id()),
-            tuple_name_space: 0,
         };
         for i in 0..ast.root.children.len() {
             generate_statement(&mut code.global, &mut naming, &ast.root.children[i])?;
         }
         
         code.global.argc = *get_annotation!(ast.root, "expected scope annotation on root", Annotation::Scope(scope))?;
-
-        code.tuple_name_space = naming.tuple_id_front;
         Ok(code)
     }
 
@@ -182,12 +171,12 @@ impl Code {
         Ok(instrs)
     }
 
-    pub fn to_instrs(&self) -> (usize, usize, usize, Vec<Instr>) {
+    pub fn to_instrs(&self) -> (usize, usize, Vec<Instr>) {
         let mut out = Vec::with_capacity(self.global.code.len() * 2);
         let mut func_indices: HashMap<usize, (usize, usize)> = HashMap::new();
         let mut label_indices: HashMap<usize, usize> = HashMap::new();
 
-        (self.tuple_name_space, self.global.argc, Code::create_function(true,&self.global, &mut out, &mut func_indices, &mut label_indices), out)
+        (self.global.argc, Code::create_function(true,&self.global, &mut out, &mut func_indices, &mut label_indices), out)
     } 
 
     fn create_function(is_global: bool, func: &Function, out: &mut Vec<Instr>, func_indices: &mut HashMap<usize, (usize, usize)>, label_indices: &mut HashMap<usize, usize>) -> usize {
@@ -281,9 +270,6 @@ impl Code {
             }
         }
 
-        for tuple in &func.tuples {
-            out.push(Instr::RemoveTuple(*tuple));
-        }
         for heap in &func.heap {
             out.push(Instr::Free(*heap));
         }
@@ -317,7 +303,7 @@ impl Code {
 
 impl ToString for Code {
     fn to_string(&self) -> String {
-        let (_, _, _, instrs) = self.to_instrs();
+        let (_, _, instrs) = self.to_instrs();
         Code::from_instr_to_string(&instrs, false)
     }
 }
@@ -333,14 +319,6 @@ fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>)
         ASTNodeType::Reference(_) => generate_reference(func, naming, node),
         ASTNodeType::Call(_) => generate_call(func, naming, node),
         ASTNodeType::CallStr(_,_) => generate_call(func, naming, node),
-        ASTNodeType::Tuple(_) => generate_tuple(func, naming, node),
-        ASTNodeType::TupleConstructor => {
-            let reference = generate_expression(func, naming, &node.children[0])?;
-            let tuple_id = naming.new_tuple_id();
-            func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-            func.tuples.push(tuple_id);
-            Ok(Reference::Tuple(tuple_id))
-        },
         ASTNodeType::Number(num) => Ok(Reference::Literal(num)),
         _ => create_generation_error!(node, "invalid value in expression")
     }
@@ -441,21 +419,7 @@ fn generate_extended_exec(is_eval: bool, func: &mut Function, naming: &mut Namin
     let lhs = match &node.children[0].node_type {
         ASTNodeType::Range =>  Reference::None,
         ASTNodeType::RangeComplex => Reference::None,
-        ASTNodeType::TupleConstructor => {
-            let reference = generate_expression(func, naming, &node.children[0].children[0])?;
-            let tuple_id = naming.new_tuple_id();
-            func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-            func.tuples.push(tuple_id);
-            Reference::Tuple(tuple_id)
-        }
         ASTNodeType::Matrix => Reference::Matrix,
-        ASTNodeType::Tuple(_) => {
-            if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[0])? {
-                Reference::Tuple(id)
-            } else {
-                return create_generation_error!(node.children[0], "expected tuple as lhs")
-            }
-        },
         ASTNodeType::Reference(_) => generate_reference(func, naming, &node.children[0])?,
         _ => return create_generation_error!(node.children[0], "invalid lhs for extended exec"),
     };
@@ -573,17 +537,8 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
                 continue;
             }
             if is_ref {
-                let reference  = match &node.children[0].node_type {
-                    ASTNodeType::TupleConstructor => {
-                        let reference = generate_expression(func, naming, &node.children[0].children[0])?;
-                        let tuple_id = naming.new_tuple_id();
-                        func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-                        func.tuples.push(tuple_id);
-                        Reference::Tuple(tuple_id)
-                    }
-                    ASTNodeType::Tuple(_) => generate_tuple(&mut inner_func, naming, &node.children[i])?,
-                    _=> generate_expression(&mut inner_func, naming, &node.children[i])?,
-                };
+                let reference  = generate_expression(&mut inner_func, naming, &node.children[i])?;
+
                 if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                     inner_func.code.push(Line::Instr(Instr::Push(reference)));
                 }
@@ -632,26 +587,6 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
         let id = inner_func.id;
         func.funcs.insert(inner_func.id, inner_func);
         Ok(id)
-    }
-}
-
-fn generate_tuple(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
-    let tuple_id = naming.new_tuple_id();
-    if let ASTNodeType::Tuple(size) = node.node_type {
-        func.tuples.push(tuple_id);
-        func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, Reference::Literal(size as f64))));
-        let mut tuple_index = 0;
-        for i in 0..node.children.len() {
-            if matches!(node.children[i].node_type, ASTNodeType::Throw) {
-                continue;
-            }
-            let reference = generate_expression(func, naming, &node.children[i])?;
-            func.code.push(Line::Instr(Instr::SetTuple(tuple_id, Reference::Literal(tuple_index as f64), reference)));
-            tuple_index += 1
-        }
-        Ok(Reference::Tuple(tuple_id))
-    } else {
-        create_generation_error!(node, "expected tuple")
     }
 }
 
@@ -713,16 +648,6 @@ fn generate_indexed(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode
                 func.code.push(Line::Instr(Instr::GetMatrix(x, y)));
             } else {
                 return create_generation_error!(node.children[1], "Expected meta in indexed value")
-            }
-        },
-        ASTNodeType::Reference(_) => {
-            let reference = generate_reference(func, naming, &node.children[0])?;
-
-            if let ASTNodeType::Index = &node.children[1].node_type {
-                let x = generate_expression(func, naming, &node.children[1].children[0])?;
-                func.code.push(Line::Instr(Instr::GetTupleReference(reference, x)));
-            } else {
-                return create_generation_error!(node.children[1], "Expected index in indexed value")
             }
         },
         _=> return create_generation_error!(node.children[0], "Expected index in indexed value")
@@ -924,23 +849,7 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
             func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), func_id));
             Reference::StackExpr
         } else {
-            match &node.children[1].node_type {
-                ASTNodeType::Tuple(_) => {
-                    if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[1])? {
-                        Reference::Tuple(id)
-                    } else {
-                        return create_generation_error!(node.children[1], "expected tuple as lhs")
-                    }
-                },
-                ASTNodeType::TupleConstructor => {
-                    let reference = generate_expression(func, naming, &node.children[1].children[0])?;
-                    let tuple_id = naming.new_tuple_id();
-                    func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-                    func.tuples.push(tuple_id);
-                    Reference::Tuple(tuple_id)
-                },
-                _ => generate_expression(func, naming, &node.children[1])?,
-            }
+            generate_expression(func, naming, &node.children[1])?
         };
 
         let lhs = if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
@@ -1016,23 +925,7 @@ fn generate_func_definition(is_eval: bool, func: &mut Function, naming: &mut Nam
             func.code.push(Line::ExecRef(Instr::SetArg(*id, Reference::None), func_id));
         }
     } else {
-        let reference = match &node.children[1].node_type {
-            ASTNodeType::Tuple(_) => {
-                if let Reference::Tuple(id) = generate_tuple(func, naming, &node.children[1])? {
-                    Reference::Tuple(id)
-                } else {
-                    return create_generation_error!(node.children[1], "expected tuple as lhs")
-                }
-            },
-            ASTNodeType::TupleConstructor => {
-                let reference = generate_expression(func, naming, &node.children[1].children[0])?;
-                let tuple_id = naming.new_tuple_id();
-                func.code.push(Line::Instr(Instr::CreateTuple(tuple_id, reference)));
-                func.tuples.push(tuple_id);
-                Reference::Tuple(tuple_id)
-            },
-            _ => generate_expression(func, naming, &node.children[1])?,
-        };
+        let reference = generate_expression(func, naming, &node.children[1])?;
         
         if is_eval {
             func.code.push(Line::Instr(Instr::Push(reference)));
@@ -1104,9 +997,8 @@ centre: 250/2;
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-get:(x:())->[x(1)];
-(x:(10;10)) -> [x:({100}); x <-[@;@];x],
-debug|@|;
+        fact: (x:0) -> [x=0?( 1; x * (x-1) -> fact)];
+        debug|(10)->fact|;
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));
@@ -1121,8 +1013,8 @@ debug|@|;
 
         match code {
             Ok(code) => {
-                let (name_space, globals, start, instrs) = code.to_instrs();
-                println!("Start index: {}\nGlobals: {}\nTuple name space start: {}\n{}", start, globals, name_space, Code::from_instr_to_string(&instrs, true));
+                let (globals, start, instrs) = code.to_instrs();
+                println!("Start index: {}\nGlobals: {}\n{}", start, globals, Code::from_instr_to_string(&instrs, true));
             },
             Err(err) => panic!("{}", err.to_string())
         }

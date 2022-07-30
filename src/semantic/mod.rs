@@ -129,7 +129,6 @@ impl VariableType {
             ASTNodeType::ForEach => Ok(VariableType::Executable),
             ASTNodeType::Into => Ok(VariableType::Executable),
             ASTNodeType::ExpressionList(_) => Ok(VariableType::ExpressionList),
-            ASTNodeType::TupleConstructor => Ok(VariableType::Tuple),
             ASTNodeType::Tuple(_) => Ok(VariableType::Tuple),
             ASTNodeType::Matrix => Ok(VariableType::Matrix),
             ASTNodeType::Indexed => Ok(VariableType::Number),
@@ -345,8 +344,6 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         ASTNodeType::Reduce => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::ForEach => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::Into => validate_extended_exec(false, data, &mut node.children[1]),
-        ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[1]),
-        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[1].children[0], false),
         _ => validate_expression(data, &mut node.children[1], pull_through),
     };
 
@@ -487,8 +484,6 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Call(_) => validate_call(data, node),
         ASTNodeType::CallStr(_,_) => validate_call(data, node),
-        ASTNodeType::Tuple(_) => validate_tuple(data, node),
-        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[0], pull_through),
         ASTNodeType::Reference(_) => {
             let var_type = VariableType::node_to_type(data, node, pull_through);
             if matches!(var_type, Ok(VariableType::Matrix)) {
@@ -576,11 +571,9 @@ fn validate_extended_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box
         res
     })?;
     match &node.children[0].node_type {
-        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[0].children[0], false),
         ASTNodeType::Range => Ok(()),
         ASTNodeType::RangeComplex => Ok(()),
         ASTNodeType::Matrix => Ok(()),
-        ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[0]),
         ASTNodeType::Reference(Token::Identifier(_)) => {
             validate_reference(data, &mut node.children[0], false)?;
             if !matches!(get_annotation!(node.children[0], "", Annotation::Matrix), Ok(_)) &&
@@ -627,11 +620,7 @@ fn validate_exec_tuple(is_eval: bool, is_ref: bool, data: &mut SemanticData, nod
         } else {
             if is_eval {
                 if is_ref {
-                    match &node.children[i].node_type {
-                        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[i].children[0], is_eval)?,
-                        ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[i])?,
-                        _=> validate_expression(data, &mut node.children[i], is_eval)?,
-                    }
+                    validate_expression(data, &mut node.children[i], is_eval)?;
 
                     argc += 1;
                 } else {
@@ -696,27 +685,7 @@ fn validate_indexed(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<
             create_semantic_error!(node, "matrix must be indexed by a 2d index")?;
         }
     } else {
-        let reference = is!(&node.children[0].node_type, "expected identifier", ASTNodeType::Reference(reference))?;
-        let ident = is!(reference, "expected identifier", Token::Identifier(ident))?;
-        let var_type = if let Some(variable) = data.globals.variables.get(ident) {
-            node.children[0].annotations.push(Annotation::GlobalId(variable.id));
-            variable.var_type
-        } else if let Some(scope) = data.stack.last() {
-            if let Some(variable) = scope.variables.get(ident) {
-                node.children[0].annotations.push(Annotation::Id(variable.id));
-                variable.var_type
-            } else {
-                create_semantic_error!(node, "identifier must be defined before it is used")?
-            }
-        } else {
-            create_semantic_error!(node, "identifier must be defined before it is used")?
-        }.clone();
-        if matches!(node.children[1].node_type, ASTNodeType::Index) {
-            validate_expression(data, &mut node.children[1].children[0], false)?;
-            is!(var_type, "variable must be a tuple", VariableType::Tuple)?
-        } else {
-            create_semantic_error!(node, "matrix must be indexed by a 1d index")?;
-        }
+        create_semantic_error!(node, "expected matrix")?
     }
     
     Ok(())

@@ -217,46 +217,6 @@ impl ExprStack {
         }
     }
 }
-
-pub struct TupleStack {
-    stack: Vec<usize>,
-    clear_stack: Vec<usize>,
-}
-
-impl TupleStack {
-    pub fn new(capacity: usize) -> TupleStack {
-        let stack =  Vec::<usize>::with_capacity(capacity);
-        let mut clear_stack =  Vec::<usize>::with_capacity(capacity);
-        clear_stack.push(0);
-        TupleStack { stack,  clear_stack}
-    } 
-
-    pub fn push(&mut self, tuple: usize) {
-        self.stack.push(tuple);
-    }
-
-    pub fn push_frame(&mut self)  {
-        self.clear_stack.push(self.stack.len());
-    }
-
-    pub fn pop_frame(&mut self) -> Option<Vec<usize>> {
-        if let Some(last) = self.clear_stack.last() {
-            let mut out = Vec::with_capacity(self.stack.len() - *last);
-            while  self.stack.len() > *last {
-                if let Some(tuple) = self.stack.pop() {
-                    out.push(tuple);
-                }
-            }
-            if self.clear_stack.len() > 1 {
-                self.clear_stack.pop();
-            }
-
-            Some(out)
-        } else {
-            None
-        }
-    }
-}
 #[wasm_bindgen]
 pub struct Matrix {
     memory: Vec<f64>,
