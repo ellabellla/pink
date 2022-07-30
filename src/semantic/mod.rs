@@ -52,6 +52,21 @@ mod macros {
         };
     }
 
+    macro_rules! create_unwrapped_semantic_error {
+        ($node:expr, $err:tt) => {
+            {
+                let mut err = stringify!($err).to_string();
+                for i in 0..$node.annotations.len() {
+                    if let Annotation::DebugInfo(line, line_index) = $node.annotations[i] {
+                        err = format!("{} at line: {} and index: {}", err, line, line_index);
+                        break;
+                    }
+                }
+                SemanticError::new(&err)
+            }
+        };
+    }
+
     
     macro_rules! get_annotation {
         ($node:expr, $err:tt, $enum:ident::$pattern:ident($vars:ident $(,$vars2:ident)* )) => {
@@ -312,7 +327,11 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
     let mut init = false;
     {
         let argc =  if matches!(var_type, VariableType::Executable) || matches!(var_type, VariableType::ExpressionList) {
-            Some(validate_argc(false, data, &mut node.children[1])?)
+            if let Ok(argc) = validate_argc(false, data, &mut node.children[1], pull_through) {
+                Some(argc) 
+            } else {
+                None
+            }
         } else{
             None
         };
@@ -328,6 +347,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
             }
 
             init = true;
+            
             if let Some(scope) = data.stack.last_mut() {
                 let id = scope.new_id();
                 scope.variables.insert(ident.clone(), Variable::new(id, var_type, argc));
@@ -529,7 +549,7 @@ fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>
                     }
                 }
 
-                if let Some(scope) = data.stack.last() {
+                if let Some(scope) = data.stack.get(data.stack.len() - 2) {
                     if let Some(variable) = scope.variables.get(ident) {
                         if let Some(var_argc) = variable.argc {
                             if var_argc < argc {
@@ -647,8 +667,8 @@ fn validate_exec_tuple(is_eval: bool, is_ref: bool, data: &mut SemanticData, nod
     Ok(argc)
 }
 
-fn validate_argc(is_ref: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<usize, SemanticError> { 
-    match node.node_type {
+fn validate_argc(is_ref: bool, data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<usize, SemanticError> { 
+    match &node.node_type {
         ASTNodeType::Exec => {
             let mut argc = 0;  
             for i in 0..node.children[0].children.len() {
@@ -668,11 +688,27 @@ fn validate_argc(is_ref: bool, data: &mut SemanticData, node: &mut Box<ASTNode>)
             }
             Ok(argc)
         },
-        ASTNodeType::Reduce => validate_argc(is_ref, data, &mut node.children[1]),
-        ASTNodeType::ForEach => validate_argc(is_ref, data, &mut node.children[1]),
-        ASTNodeType::Into => validate_argc(is_ref, data, &mut node.children[1]),
+        ASTNodeType::Reduce => validate_argc(is_ref, data, &mut node.children[1], pull_through),
+        ASTNodeType::ForEach => validate_argc(is_ref, data, &mut node.children[1], pull_through),
+        ASTNodeType::Into => validate_argc(is_ref, data, &mut node.children[1], pull_through),
         ASTNodeType::ExpressionList(_) => Ok(0),
-        _=> create_semantic_error!(node, "")
+        ASTNodeType::Reference(Token::Identifier(ident)) => {
+            if let Some(variable) = data.globals.variables.get(ident) {
+                return variable.argc.ok_or(create_unwrapped_semantic_error!(node, "couldn't determine argc"))
+            } else if let Some(scope) = data.stack.last() {
+                if let  Some(variable) = scope.variables.get(ident) {
+                    return variable.argc.ok_or(create_unwrapped_semantic_error!(node, "couldn't determine argc"))
+                } else if pull_through {
+                    if let Some(scope) = data.stack.get(data.stack.len()-2){
+                        if let  Some(variable) = scope.variables.get(ident) {
+                            return variable.argc.ok_or(create_unwrapped_semantic_error!(node, "couldn't determine argc"))
+                        }
+                    }
+                }
+            }
+            create_semantic_error!(node, "couldn't determine argc")
+        }
+        _=> create_semantic_error!(node, "couldn't determine argc")
     }
 }
 

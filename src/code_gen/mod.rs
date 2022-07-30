@@ -537,7 +537,11 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
                 continue;
             }
             if is_ref {
-                let reference  = generate_expression(&mut inner_func, naming, &node.children[i])?;
+                let reference  = generate_function(false, func, naming, &node.children[i]).map(|id|{
+                    inner_func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), id));
+                    Reference::StackExpr
+                })
+                .or_else(|_| generate_expression(&mut inner_func, naming, &node.children[i]))?;
 
                 if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                     inner_func.code.push(Line::Instr(Instr::Push(reference)));
@@ -548,7 +552,11 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
                 if generate_func_definition(is_eval, func, naming, &node.children[i]).is_ok() {
                     arg_index += 1;
                 } else {
-                    let reference = generate_expression(&mut inner_func, naming, &node.children[i])?;
+                    let reference  = generate_function(false, func, naming, &node.children[i]).map(|id|{
+                        inner_func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), id));
+                        Reference::StackExpr
+                    })
+                    .or_else(|_| generate_expression(&mut inner_func, naming, &node.children[i]))?;
                     
                     if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                         inner_func.code.push(Line::Instr(Instr::Push(reference)));
@@ -571,7 +579,11 @@ fn generate_func_tuple(is_eval: bool, is_ref: bool, func: &mut Function, naming:
                     arg_index += 1;
                 }
             } else {
-                let reference = generate_expression(&mut inner_func, naming, &node.children[i])?;
+                let reference  = generate_function(false, &mut inner_func, naming, &node.children[i]).map(|id|{
+                    inner_func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), id));
+                    Reference::StackExpr
+                })
+                .or_else(|_| generate_expression(&mut inner_func, naming, &node.children[i]))?;
     
                 if !matches!(reference, Reference::StackPeek) && !matches!(reference, Reference::Stack) {
                     inner_func.code.push(Line::Instr(Instr::Push(reference)));
@@ -828,8 +840,10 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
     if !matches!(node.node_type, ASTNodeType::Set(_)) {
         return create_generation_error!(node, "node is not a definition");
     }
-    let is_exec = get_annotation!(node.children[0], "", Annotation::Executable).is_ok();
-    let is_expression_list = get_annotation!(node.children[0], "", Annotation::ExpressionList).is_ok();
+    let is_exec = get_annotation!(node.children[0], "", Annotation::Executable).is_ok() && 
+        !matches!(node.children[1].node_type, ASTNodeType::Reference(_));
+    let is_expression_list = get_annotation!(node.children[0], "", Annotation::ExpressionList).is_ok() && 
+        !matches!(node.children[1].node_type, ASTNodeType::Reference(_));
     let id = get_annotation!(node.children[0], "", Annotation::GlobalId(id))
         .or_else(|_| get_annotation!(node.children[0], "definition requires id", Annotation::Id(id)))?;
 
@@ -894,8 +908,10 @@ fn generate_func_definition(is_eval: bool, func: &mut Function, naming: &mut Nam
     if !matches!(node.node_type, ASTNodeType::Set(_)) {
         return create_generation_error!(node, "node is not a definition");
     }
-    let is_exec = get_annotation!(node.children[0], "", Annotation::Executable).is_ok();
-    let is_expression_list = get_annotation!(node.children[0], "", Annotation::ExpressionList).is_ok();
+    let is_exec = get_annotation!(node.children[0], "", Annotation::Executable).is_ok() && 
+        !matches!(node.children[1].node_type, ASTNodeType::Reference(_));
+    let is_expression_list = get_annotation!(node.children[0], "", Annotation::ExpressionList).is_ok() && 
+        !matches!(node.children[1].node_type, ASTNodeType::Reference(_));
     let id = get_annotation!(node.children[0], "definition requires id", Annotation::Id(id))?;
 
     let mut end = 0;
@@ -992,13 +1008,19 @@ centre: 250/2;
  f:(x:())->[x<-[@;@]],
         (({10}))->f,
         debug|@|;
+
+        f:(x:10)->[x+10];
+        (x:f)->[(3)->x],
+        debug|@|;
     */
 
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        fact: (x:0) -> [x=0?( 1; x * (x-1) -> fact)];
-        debug|(10)->fact|;
+        f:(x:10)->[x+10];
+        passf:(x:(x:0)->[10])->[(3)->x];
+        ((x:0)->[x+2])->passf,
+        debug|@|;
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));
