@@ -1,6 +1,6 @@
 use std::{collections::{HashMap}, str::{Chars}, fmt, iter::Peekable};
 
-use super::{Stack, Data, Matrix, CALLS, ExprStack};
+use super::{Stack, Data, Matrix, CALLS, ExprStack, TupleStack};
 
 #[macro_use] 
 mod macros {
@@ -739,11 +739,13 @@ mod instr_ops {
     }
     pub fn push_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         vm.stack.push(Data::Frame(a, 0, vm.instr_pointer));
+        vm.tuple_stack.push_frame();
         vm.instr_pointer = b;
         Ok(None)
     }
     pub fn push_inline_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         vm.stack.push(Data::Frame(a, 0, b));
+        vm.tuple_stack.push_frame();
         Ok(None)
     }
 
@@ -757,10 +759,10 @@ mod instr_ops {
     }
     pub fn remove_tuple(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Some(_) = vm.tuples.remove(&a) {
-            Ok(None)
-        } else {
+        } /*else {
             create_instr_error!(vm, "couldn't remove tuple")
-        }
+        }*/
+        Ok(None)
     }
     pub fn len_tuple(a: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         if let Some(tuples) = vm.tuples.get(&a) {
@@ -846,9 +848,11 @@ pub trait ExternPrintLn {
 pub struct VM {
     pub globals: Vec<Reference>,
     matrix: Box<Matrix>,
-    tuples: HashMap<usize, Vec<Reference>>,
+    pub tuples: HashMap<usize, Vec<Reference>>,
+    tuple_name_space: usize,
     pub stack: Stack,
     pub expr_stack: ExprStack,
+    pub tuple_stack: TupleStack,
     instrs: Vec<Instr>,
     pub instr_pointer: usize,
     pub heap: HashMap<usize, Reference>,
@@ -857,13 +861,15 @@ pub struct VM {
 
 impl VM {
 
-    pub fn new(matrix_size: (usize, usize), globals_capacity: usize, stack_capacity: usize, instrs: Vec<Instr>, instr_pointer: usize, extern_println: Box<dyn ExternPrintLn>)-> VM {
+    pub fn new(matrix_size: (usize, usize), tuple_name_space: usize, globals_capacity: usize, stack_capacity: usize, instrs: Vec<Instr>, instr_pointer: usize, extern_println: Box<dyn ExternPrintLn>)-> VM {
         VM { 
             globals: vec![Reference::None; globals_capacity], 
             matrix: Box::new(Matrix::new(matrix_size.0, matrix_size.1)),
             tuples: HashMap::new(), 
+            tuple_name_space,
             stack: Stack::new(stack_capacity), 
             expr_stack: ExprStack::new(stack_capacity*2),
+            tuple_stack: TupleStack::new(stack_capacity*2),
             instrs: instrs, 
             instr_pointer,
             heap: HashMap::new(),
@@ -956,9 +962,34 @@ impl VM {
                 Instr::PushFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_frame),
                 Instr::PushInlineFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_inline_frame),
                 Instr::PopFrame(a) => {
-                    let reference = a.resolve(self)?;
+                    let mut reference = a.resolve(self)?;
+
+                    let new_tuple = if let Reference::Tuple(id) = reference {
+                        if let Some(tuple) = self.tuples.remove(&id) {
+                            let id = self.new_tuple_id();
+                            self.tuples.insert(id, tuple);
+                            reference = Reference::Tuple(id);
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
                     if let Some(instr_pointer) = self.stack.pop_frame() {
                         self.instr_pointer = instr_pointer;
+
+                        if let Some(dead_tuples) = self.tuple_stack.pop_frame() {
+                            for tuple in &dead_tuples{
+                                self.tuples.remove(tuple);
+                            }
+                        }
+                        if new_tuple {
+                            if let Reference::Tuple(id) = reference {
+                                self.tuple_stack.push(id);
+                            }
+                        }
+
                         self.expr_stack.push(reference);
                         Ok(None)
                     } else {
@@ -1014,6 +1045,7 @@ impl VM {
                     }
                 },
                 Instr::GetTupleReference(a, b) => {
+                    let a = a.resolve(self)?;
                     if let Reference::Tuple(id) = self.eval_tuple_or_matrix(a) {
                         let b = b.to_number(0, 0, self)?;
                         if let Some(references) = self.tuples.get(&id) {
@@ -1464,6 +1496,11 @@ impl VM {
         }
     }
 
+    fn new_tuple_id(&mut self) -> usize {
+        self.tuple_name_space += 1;
+        self.tuple_name_space
+    }
+
     fn execute(&mut self, argc: usize, instr_pointer: usize) -> Result<Reference, InstrError> {
         let prev_instr_pointer = self.instr_pointer;
         self.stack.push(Data::Frame(argc, 0, self.instr_pointer));
@@ -1623,7 +1660,7 @@ mod tests {
             Instr::Into(Reference::Executable(2,0), Reference::Matrix),
             Instr::Pop(1),
             ];
-        let mut vm = VM::new((250, 250), 0, 100, instrs, 11, Box::new(Printer{}));
+        let mut vm = VM::new((250, 250), 10, 0, 100, instrs, 11, Box::new(Printer{}));
         vm.run().unwrap();
     }
 

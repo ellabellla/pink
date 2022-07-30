@@ -129,6 +129,7 @@ impl VariableType {
             ASTNodeType::ForEach => Ok(VariableType::Executable),
             ASTNodeType::Into => Ok(VariableType::Executable),
             ASTNodeType::ExpressionList(_) => Ok(VariableType::ExpressionList),
+            ASTNodeType::TupleConstructor => Ok(VariableType::Tuple),
             ASTNodeType::Tuple(_) => Ok(VariableType::Tuple),
             ASTNodeType::Matrix => Ok(VariableType::Matrix),
             ASTNodeType::Indexed => Ok(VariableType::Number),
@@ -345,6 +346,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
         ASTNodeType::ForEach => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::Into => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[1]),
+        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[1].children[0], false),
         _ => validate_expression(data, &mut node.children[1], pull_through),
     };
 
@@ -485,11 +487,12 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Indexed => validate_indexed(data, node),
         ASTNodeType::Call(_) => validate_call(data, node),
         ASTNodeType::CallStr(_,_) => validate_call(data, node),
+        ASTNodeType::Tuple(_) => validate_tuple(data, node),
+        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[0], pull_through),
         ASTNodeType::Reference(_) => {
             let var_type = VariableType::node_to_type(data, node, pull_through);
-            if matches!(var_type, Ok(VariableType::Tuple)) ||
-                matches!(var_type, Ok(VariableType::Matrix)) {
-                    return create_semantic_error!(node, "reference cannot be to a tuple or matrix in an expression")
+            if matches!(var_type, Ok(VariableType::Matrix)) {
+                    return create_semantic_error!(node, "reference cannot be to or matrix in an expression")
             }
             validate_reference(data, node, pull_through)
         },
@@ -622,14 +625,32 @@ fn validate_exec_tuple(is_eval: bool, is_ref: bool, data: &mut SemanticData, nod
         if matches!(node.children[i].node_type, ASTNodeType::Throw) || matches!(node.children[i].node_type, ASTNodeType::Push) {
             continue;
         } else {
-            if validate_definition(data, &mut node.children[i], is_eval, true).is_ok() {
-                if !is_ref {
+            if is_eval {
+                if is_ref {
+                    match &node.children[i].node_type {
+                        ASTNodeType::TupleConstructor => validate_expression(data, &mut node.children[i].children[0], is_eval)?,
+                        ASTNodeType::Tuple(_) => validate_tuple(data, &mut node.children[i])?,
+                        _=> validate_expression(data, &mut node.children[i], is_eval)?,
+                    }
+
                     argc += 1;
+                } else {
+                    if validate_definition(data, &mut node.children[i], is_eval, true).is_ok() {
+                        argc += 1;
+                    } else {
+                        validate_expression(data, &mut node.children[i], is_eval)?;
+                    }
                 }
             } else {
-                validate_expression(data, &mut node.children[i], is_eval)?;
-                if is_ref {
-                    argc += 1;
+                if validate_definition(data, &mut node.children[i], is_eval, true).is_ok() {
+                    if !is_ref {
+                        argc += 1;
+                    }
+                } else {
+                    validate_expression(data, &mut node.children[i], is_eval)?;
+                    if is_ref {
+                        argc += 1;
+                    }
                 }
             }
         }
