@@ -136,7 +136,8 @@ impl Stack {
         if index >= self.get_frame_argc() || index > self.frame_index || self.frame_index == 0 {
             None
         } else {
-            if let Data::Reference(reference) = self.stack[self.frame_index - 1 - index] {
+            let index = self.frame_index - self.get_frame_argc() + index;
+            if let Data::Reference(reference) = self.stack[index] {
                 Some(reference)
             } else {
                 None
@@ -146,7 +147,8 @@ impl Stack {
 
     pub fn set_arg(&mut self, index: usize, reference: Reference) -> Option<Reference> {
         if !(index >= self.get_frame_argc() || index > self.frame_index || self.frame_index == 0) {
-            self.stack[self.frame_index - 1 - index] = Data::Reference(reference);
+            let index = self.frame_index - self.get_frame_argc() + index;
+            self.stack[index] = Data::Reference(reference);
             Some(reference)
         } else {
             None
