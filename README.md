@@ -1,6 +1,9 @@
+# WORK IN PROGRESS
 # PINK: A Toy Programming Language
 
 Pink is a functional stack based programming language. The programming language uses a stack to optionally store the result of each statement of the program. Each statement is made up of either a definition of a variable or an expression. Variables can either be defined globally, which can be accessed anywhere but only modified in the global scope, or locally in a function as a parameter to that function. Expressions are made up of values and operations on those values. A value can be anything from a function, to a variable, or to a plain number.
+
+Pink is currently a work in progress and contains many bugs. Alot of work is needed.
 
 ## Examples
 
@@ -77,6 +80,14 @@ An indexed value is an expression that indexes an element in the output [matrix]
 #### Matrix
 A matrix is used represent the output image of the program. It stores only numbers. All values in the matrix are converted into a scale of `0.0` to `1.0`, `1.0` being pink and `0.0` being black, when the program ends. Then the matrix is outputted as an image.
 - `#` refers to the output matrix
+
+#### Strings
+Strings are an list of characters surrounded by `"`s, An escape can be used to put special characters in the string. The escapes are:
+- `\n` for a new line
+- `\r` for a carriage return
+- `\t` for a tab
+- `\\` for a `\`
+- `\"` for a `"`
 
 #### Range
 A range defines a range of numbers from a starting number to an ending number. By default the step is one but can be optionally define. The starting number is inclusive, the ending number is not. They are used as parameters to [extended functions](#extended-functions).
@@ -203,7 +214,7 @@ Reduce resolves to the final value of the accumulator.
 External calls run functions that exist outside of the program. They are called by writing their identifier then an argument list surrounded by `|` and `|`, and separated by `;`. 
 - `sin|10|;` will call the external function sin with the argument 10
 
-Some external calls can take an optional [string](#string) as a parameter. The string is passed as the first argument with no separator followed by the rest of the arguments.
+Some external calls can take an optional [string](#strings) as a parameter. The string is passed as the first argument with no separator followed by the rest of the arguments.
 - `debug|"should be 10" @|` passes the string `"should be 10"` and the value `@` to the call `debug`
 
 All external calls will resolve to some value.
