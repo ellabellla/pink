@@ -34,6 +34,14 @@ fib: (n:0;i:0;a:0;b:1) -> [
 debug|(10)->fib|;
 ```
 
+## Todo
+- better error reporting
+- more tests
+  - unit tests
+  - create integration tests
+- tail recursion on `!` when used with function
+- dynamic defaults for scope definition
+
 ## Syntax
 
 ### Statements & Terminators
