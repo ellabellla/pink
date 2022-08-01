@@ -869,14 +869,12 @@ mod tests {
     #[test]
     fn test_semantic() {
         let mut tree = AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-            var0: (1; 0);
             var1: 10;
             var1;
             var2: 2*2;
             var2: 4;
             var3: (1; x:2; y:1) -> [(y) -> [1]];
             2* 2 ? (2; 2);
-            var0(1);
 
         ")).unwrap();
 

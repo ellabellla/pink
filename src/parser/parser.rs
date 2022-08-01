@@ -853,17 +853,18 @@ mod tests {
     fn test_func() {
         assert_parse_eq!(r"()->[];", "((((Tuple(0))(ExpressionList(0))Exec)Statement(Throw))Root)");
 
-        assert_parse_eq!(r"()*>[];", "((((Tuple(0))(ExpressionList(0))Reduce)Statement(Throw))Root)");
+        assert_parse_eq!(r"()->[]!;", "(((((Tuple(0))(ExpressionList(0))Exec)TailExec)Statement(Throw))Root)");
 
-        assert_parse_eq!(r"()<-[];", "((((Tuple(0))(ExpressionList(0))Into)Statement(Throw))Root)");
+        assert_parse_eq!(r"{2;3}*>[];", "(((((Number(2.0))(Number(3.0))Range)(ExpressionList(0))Reduce)Statement(Throw))Root)");
 
-        assert_parse_eq!(r"()<*[];", "((((Tuple(0))(ExpressionList(0))ForEach)Statement(Throw))Root)");
+        assert_parse_eq!(r"#<-[];", "((((Matrix)(ExpressionList(0))Into)Statement(Throw))Root)");
+
+        assert_parse_eq!(r"{2;3}<*[];", "(((((Number(2.0))(Number(3.0))Range)(ExpressionList(0))ForEach)Statement(Throw))Root)");
     }
 
     #[test]
     fn test_index() {
-        assert_parse_eq!(r"var(10;20);", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(20.0))Index2D)Indexed)Statement(Throw))Root)");
-        assert_parse_eq!(r"var(10);", "((((Reference(Identifier(\"var\")))((Number(10.0))Index)Indexed)Statement(Throw))Root)");
+        assert_parse_eq!(r"#(10;20);", "((((Matrix)((Number(10.0))(Number(20.0))Index2D)Indexed)Statement(Throw))Root)");
     }
 
     #[test]
@@ -876,15 +877,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tuple() {
-        assert_parse_eq!("v:();", "((((Reference(Identifier(\"v\")))(Tuple(0))Set(Set))Statement(Throw))Root)");
-        assert_parse_eq!("v:(1;2);", "((((Reference(Identifier(\"v\")))((Number(1.0))(Throw)(Number(2.0))Tuple(2))Set(Set))Statement(Throw))Root)");
-        assert_parse_eq!("v:(var;2);", "((((Reference(Identifier(\"v\")))((Reference(Identifier(\"var\")))(Throw)(Number(2.0))Tuple(2))Set(Set))Statement(Throw))Root)");
-        assert_parse_eq!("v:(1+2);", "((((Reference(Identifier(\"v\")))(((Number(1.0))(Number(2.0))Operator(Add))Tuple(1))Set(Set))Statement(Throw))Root)");
-        assert_parse_eq!("v:(var:10);", "((((Reference(Identifier(\"v\")))(((Reference(Identifier(\"var\")))(Number(10.0))Set(Set))Tuple(1))Set(Set))Statement(Throw))Root)");
-    }
-
-    #[test]
     fn test_definition() {
         assert_parse_eq!("var:10*10;", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(10.0))Operator(Multiply))Set(Set))Statement(Throw))Root)");
         assert_parse_eq!("var+:10*10;", "((((Reference(Identifier(\"var\")))((Number(10.0))(Number(10.0))Operator(Multiply))Set(AddAndSet))Statement(Throw))Root)");
@@ -894,11 +886,5 @@ mod tests {
     fn test_matrix() {
         assert_parse_eq!("# <- [1];", "((((Matrix)((Number(1.0))ExpressionList(1))Into)Statement(Throw))Root)");
         assert_parse_eq!("#(10;10);", "((((Matrix)((Number(10.0))(Number(10.0))Index2D)Indexed)Statement(Throw))Root)");
-    }
-
-    #[test]
-    fn text_tuple_constructor() {
-        assert_parse_eq!("({1}) <- [1];", "(((((Number(1.0))TupleConstructor)((Number(1.0))ExpressionList(1))Into)Statement(Throw))Root)");
-
     }
 }
