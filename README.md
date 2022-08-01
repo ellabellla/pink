@@ -37,6 +37,28 @@ fib: (n:0;i:0;a:0;b:1) -> [
 debug|(10)->fib|;
 ```
 
+### SDF
+
+#### Circle
+```
+centreX: width/2;
+centreY: height/2;
+# <- (radius: 100) -> [@;
+  circle|@-centreX; @-centreY; radius|,
+  sdf|@|
+];
+```
+
+#### Rectangle
+```
+centreX: width/2;
+centreY: height/2;
+# <- (_width: 100; _height:50) -> [@;
+  rect|@-centreX; @-centreY; _width; _height|,
+  sdf|@|
+];
+```
+
 ## Todo
 - better error reporting
 - more tests
