@@ -58,9 +58,10 @@ token_lookup!(
 
 pub const TOKEN_STRING_START: &str = "\"";
 pub const TOKEN_STRING_END: &str = "\"";
-pub const TOKEN_STRING_ESCAPE: [(char, char); 4] = [
+pub const TOKEN_STRING_ESCAPE: [(char, char); 5] = [
     ('n', '\n'),
     ('r', '\r'),
     ('t', '\t'),
     ('\\', '\\'),
+    ('\"', '"'),
 ];
