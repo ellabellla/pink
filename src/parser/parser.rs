@@ -301,7 +301,9 @@ fn parse_value(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         Ok(Box::new(ASTNode::new(ASTNodeType::Number(1.0), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
     } else if is_next_continue!(parser.tokenizer, Token::False).is_ok() {
         Ok(Box::new(ASTNode::new(ASTNodeType::Number(0.0), vec![], Annotation::pos_to_debug(parser.tokenizer.pos()))))
-    } else if let Ok(node) = parse_exec(parser) {
+    } else if let Ok(node) = parse_tail_exec(parser) {
+        return Ok(node)
+    }else if let Ok(node) = parse_exec(parser) {
         return Ok(node)
     } else if let Ok(node) = parse_reduce(parser) {
         return Ok(node)
@@ -557,6 +559,14 @@ fn parse_expression_list(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError
     
 }
 
+
+fn parse_tail_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
+    let fallback = parser.tokenizer.pos();
+    let children = vec![parse_exec(parser)?];
+    is_next!(parser.tokenizer, fallback, Token::Return)?;
+
+    Ok(Box::new(ASTNode::new(ASTNodeType::TailExec,  children, Annotation::pos_to_debug(parser.tokenizer.pos()))))
+}
 
 fn parse_exec(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
     let fallback = parser.tokenizer.pos();

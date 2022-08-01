@@ -132,6 +132,28 @@ impl Stack {
         None
     }
 
+    pub fn pop_frame_in_place(&mut self, argc: usize) -> Result<(), InstrError> {
+        if let Data::Frame(frame_argc, prev_frame, instr_pointer) = self.stack[self.frame_index] {
+            if self.frame_index + argc >= self.stack.len() {
+                Err(InstrError::new("unable to pop frame inline"))
+            } else {
+                let frame_offset = self.frame_index - frame_argc;
+                let  arg_offset = self.stack.len() - argc;
+                for i in 0..argc {
+                    self.stack[i+frame_offset] = self.stack[i+arg_offset];
+                }
+                while self.stack.len() > frame_offset + argc {
+                    self.stack.pop();
+                }
+                self.frame_index = self.stack.len();
+                self.stack.push(Data::Frame(argc, prev_frame, instr_pointer));
+                Ok(())
+            }
+        } else {
+            unreachable!("frame index should point to frame")
+        }
+    } 
+
     pub fn get_arg(&mut self, index: usize) -> Option<Reference> {
         if index >= self.get_frame_argc() || index > self.frame_index || self.frame_index == 0 {
             None

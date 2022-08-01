@@ -16,6 +16,7 @@ pub enum StatementType {
 pub enum ASTNodeType {
     Operator(Token),
 
+    TailExec,
     Exec,
     Reduce,
     ForEach,

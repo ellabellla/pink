@@ -44,7 +44,7 @@ number = digit+ ('.' digit*)? | '.' digit+;
 identifier = (alpha | '_') (alpha | digit | '_')*;
 
 reference = identifier | pop | peek | ident call string? expression (';' expression) call;
-value = number | not number | true | false | indexed_value | reference | exec | reduce | for_each | into;
+value = number | not number | true | false | indexed_value | tail_exec | reference | exec | reduce | for_each | into;
 operator_1st = mul | div;
 operator_2nd = add | sub;
 operator_3rd = less_equ | great_equ | less | great | equ;
@@ -63,6 +63,7 @@ strict_definition = identifier set expression;
 
 expression_list = '[' ((definition | expression) ((',' | ';') (definition | expression))* (',' | ';')?)? ']';
 
+tail_exec = (exec | reference) return;
 exec = expression_list | (tuple exec (expression_list | identifier));
 into = matrix into exec;
 for_each = (matrix | range) into_exec exec;

@@ -211,7 +211,7 @@ impl Code {
                 }
                 Line::CallInline(argc, label_id) => {
                     let index = label_indices.get(label_id).expect("should already be defined");
-                    out.push(Instr::PushInlineFrame(*argc, *index));
+                    out.push(Instr::PushNonJumpFrame(*argc, *index));
                 },
                 Line::ExecRef(instr, func_id) => {
                     let (argc, index) = func_indices.get(func_id).expect("should already be defined");
@@ -242,6 +242,7 @@ impl Code {
                         Instr::Into(_, a) => Instr::Into(Reference::Executable(*argc, *index), *a),
                         Instr::ForEach(_, a) => Instr::ForEach(Reference::Executable(*argc, *index), *a),
                         Instr::ForEachRange(_, a, b, c) => Instr::ForEachRange(Reference::Executable(*argc, *index), *a, *b, *c),
+                        Instr::PopInPlace(_) => Instr::PopInPlace(Reference::Executable(*argc, *index)),
                         _ => todo!(),
                     })
                 },
@@ -310,6 +311,7 @@ impl ToString for Code {
 
 fn generate_value(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<Reference, GenerationError> {
     match node.node_type {
+        ASTNodeType::TailExec => generate_tail_exec(func, naming, node).map(|_| Reference::None),
         ASTNodeType::Exec => generate_eval_function(func, naming, node),
         ASTNodeType::Reduce => generate_eval_function(func, naming, node),
         ASTNodeType::ForEach => generate_eval_function(func, naming, node),
@@ -345,6 +347,27 @@ fn generate_function(is_eval: bool, func: &mut Function, naming: &mut Naming, no
         },
         _ => return create_generation_error!(node, "expected function")
     }
+}
+
+fn generate_tail_exec(func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<(), GenerationError> {
+    generate_exec(true, func, naming, &node.children[0])?;
+
+    if get_annotation!(node, "", Annotation::Exit).is_ok() {
+        func.code.push(Line::Instr(Instr::Exit));
+    } else {
+        match func.code.pop() {
+            Some(Line::Instr(Instr::ExecRef(reference)))=> {
+                func.code.push(Line::Instr(Instr::PopInPlace(reference)));
+            },
+            Some(Line::Call(func_id)) => {
+                func.code.push(Line::ExecRef(Instr::PopInPlace(Reference::None), func_id));
+            }
+            _=> unreachable!()
+        }
+        func.code.push(Line::Return(Reference::StackExpr));
+    }
+
+    Ok(())
 }
 
 fn generate_exec(is_eval: bool, func: &mut Function, naming: &mut Naming, node: &Box<ASTNode>) -> Result<usize, GenerationError> {
@@ -829,8 +852,23 @@ fn generate_expression_helper(func: &mut Function, naming: &mut Naming, node: &B
         _ => generate_value(func, naming, node)
     }?;
     if get_annotation!(node, "", Annotation::Return).is_ok() {
-        func.code.push(Line::Return(res));
-    } else if get_annotation!(node, "", Annotation::Exit).is_ok() {
+        if matches!(node.node_type, ASTNodeType::Reference(Token::Identifier(_))) && get_annotation!(node, "", Annotation::Executable).is_ok() {
+            let argc = get_annotation!(node, "executable reference should have argc annotation", Annotation::Argc(_argc))?;
+            for _ in 0..*argc {
+                func.code.push(Line::Instr(Instr::Push(Reference::None)));
+            }
+            func.code.push(Line::Instr(Instr::PopInPlace(res)));
+        } else {
+            func.code.push(Line::Return(res));
+        }
+    } else if get_annotation!(node, "", Annotation::Exit).is_ok() && !matches!(node.node_type, ASTNodeType::TailExec) {
+        if matches!(node.node_type, ASTNodeType::Reference(Token::Identifier(_))) && get_annotation!(node, "", Annotation::Executable).is_ok() {
+            let argc = get_annotation!(node, "executable reference should have argc annotation", Annotation::Argc(_argc))?;
+            for _ in 0..*argc {
+                func.code.push(Line::Instr(Instr::Push(Reference::None)));
+            }
+            func.code.push(Line::Instr(Instr::ExecRef(res)));
+        }
         func.code.push(Line::Instr(Instr::Exit));
     }
     Ok(res)
@@ -1040,10 +1078,8 @@ centre: 250/2;
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        (x:0; y:0)->[
-            x-:@;
-            y-:@;
-        ];
+        f: (x:0)->[x];
+        (10)->f!;
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));

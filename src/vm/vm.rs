@@ -11,6 +11,11 @@ mod macros {
                 Err(InstrError::new(&format!(stringify!($err at line: {}), $vm.instr_pointer - 1)))
             }
         };
+        ($vm:expr, $err:expr) => {
+            {
+                Err(InstrError::new(&format!("{} at line: {}", $err, $vm.instr_pointer - 1)))
+            }
+        };
     }
 
     #[macro_export]
@@ -18,6 +23,11 @@ mod macros {
         ($vm:expr, $err:tt) => {
             {
                 InstrError::new(&format!(stringify!($err at line: {}), $vm.instr_pointer - 1))
+            }
+        };
+        ($vm:expr, $err:expr) => {
+            {
+                InstrError::new(&format!("{} at line: {}", $err, $vm.instr_pointer - 1))
             }
         };
     }
@@ -284,7 +294,8 @@ pub enum Instr {
     HeightMatrix(usize),
 
     PushFrame(usize, usize),
-    PushInlineFrame(usize, usize),
+    PopInPlace(Reference),
+    PushNonJumpFrame(usize, usize),
     PopFrame(Reference),
     GetArg(usize),
     SetArg(usize, Reference),
@@ -371,7 +382,8 @@ impl Instr {
             "WDMT" => Ok(Instr::WidthMatrix(parse_usize(chars)?)),
             "HTMT" => Ok(Instr::HeightMatrix(parse_usize(chars)?)),
             "PSHF" => Ok(Instr::PushFrame(parse_usize(chars)?, parse_usize(chars)?)),
-            "PHIF" => Ok(Instr::PushInlineFrame(parse_usize(chars)?, parse_usize(chars)?)),
+            "POPI" => Ok(Instr::PopInPlace(Reference::from_str(chars)?)),
+            "PHNF" => Ok(Instr::PushNonJumpFrame(parse_usize(chars)?, parse_usize(chars)?)),
             "POPF" => Ok(Instr::PopFrame(Reference::from_str(chars)?)),
             "GETA" => Ok(Instr::GetArg(parse_usize(chars)?)),
             "SETA" => Ok(Instr::SetArg(parse_usize(chars)?, Reference::from_str(chars)?)),
@@ -440,7 +452,8 @@ impl ToString for Instr {
             Instr::WidthMatrix(a) => format!("WDMT {}", a.to_string()),
             Instr::HeightMatrix(a) => format!("HTMT {}", a.to_string()),
             Instr::PushFrame(a, b) => format!("PSHF {} {}", a.to_string(), b.to_string()),
-            Instr::PushInlineFrame(a, b) => format!("PHIF {} {}", a.to_string(), b.to_string()),
+            Instr::PopInPlace(a) => format!("POPI {}", a.to_string()),
+            Instr::PushNonJumpFrame(a, b) => format!("PHNF {} {}", a.to_string(), b.to_string()),
             Instr::PopFrame(a) => format!("POPF {}", a.to_string()),
             Instr::GetArg(a) => format!("GETA {}", a.to_string()),
             Instr::SetArg(a,  b) => format!("SETA {} {}", a.to_string(), b.to_string()),
@@ -711,7 +724,7 @@ mod instr_ops {
         vm.instr_pointer = b;
         Ok(None)
     }
-    pub fn push_inline_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
+    pub fn push_non_jump_frame(a: usize, b: usize, vm: &mut VM) -> Result<Option<f64>, InstrError>{
         vm.stack.push(Data::Frame(a, 0, b));
         Ok(None)
     }
@@ -901,7 +914,19 @@ impl VM {
                 Instr::WidthMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::width_matrix),
                 Instr::HeightMatrix(a) => self.eval_unary_op_fixed(a, &instr_ops::height_matrix),
                 Instr::PushFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_frame),
-                Instr::PushInlineFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_inline_frame),
+                Instr::PopInPlace(a) => {
+                    let  a = a.resolve(self)?;
+                    if  let Reference::Executable(argc, instr_pointer) = a {
+                        self.stack.pop_frame_in_place(argc)
+                        .map_err(|err| create_unwrapped_instr_error!(self, err.to_string()))?;
+                        
+                        self.instr_pointer = instr_pointer;
+                        Ok(None)
+                    } else {
+                        create_instr_error!(self, "expected executable")
+                    }
+                },
+                Instr::PushNonJumpFrame(a, b) => self.eval_binary_op_fixed2(a, b, &instr_ops::push_non_jump_frame),
                 Instr::PopFrame(a) => {
                     let reference = a.resolve(self)?;
                     if let Some(instr_pointer) = self.stack.pop_frame() {
@@ -1662,7 +1687,7 @@ mod tests {
         }
 
         {
-            let instr = Instr::PushInlineFrame(0, 0);
+            let instr = Instr::PushNonJumpFrame(0, 0);
 
             let str = instr.to_string();
             assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());

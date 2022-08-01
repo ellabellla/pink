@@ -496,6 +496,7 @@ fn validate_expression_helper(data: &mut SemanticData, node: &mut Box<ASTNode>, 
 
 fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through: bool) -> Result<(), SemanticError> {
     match node.node_type {
+        ASTNodeType::TailExec =>  validate_tail_exec(data, node),
         ASTNodeType::Exec => validate_exec( true, data, node),
         ASTNodeType::Reduce => validate_extended_exec(true, data, node),
         ASTNodeType::ForEach => validate_extended_exec(true, data, node),
@@ -514,6 +515,18 @@ fn validate_value(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_through
         ASTNodeType::Number(_) => Ok(()),
         _ => create_semantic_error!(node, "invalid value")
     }
+}
+
+fn validate_tail_exec(data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
+    if !matches!(node.node_type, ASTNodeType::TailExec) {
+        return create_semantic_error!(node, "expected tail exec")
+    }
+
+    if data.stack.is_empty() {
+        node.annotations.push(Annotation::Exit);
+    }
+
+    validate_exec(true, data, &mut node.children[0])
 }
 
 fn validate_exec(is_eval: bool, data: &mut SemanticData, node: &mut Box<ASTNode>) -> Result<(), SemanticError> {
