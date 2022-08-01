@@ -541,7 +541,38 @@ impl Call for RectangleCall {
     }
 }
 
-pub const CALLS: [&dyn Call; 14] = [
+pub struct SDFCall{}
+impl Call for SDFCall {
+    fn name(&self) -> String {
+        "sdf".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        1
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let field = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        Ok(Reference::Literal(if field < 0.0 {1.0} else {0.0}))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub const CALLS: [&dyn Call; 15] = [
     &SinCall{}, 
     &CosCall{}, 
     &TanCall{}, 
@@ -555,7 +586,8 @@ pub const CALLS: [&dyn Call; 14] = [
     &ScaleCall{},
     &RotateXCall{},
     &RotateYCall{},
-    &RectangleCall{}
+    &RectangleCall{},
+    &SDFCall{}
 ];
 
 pub fn create_call_map() -> HashMap<String, (usize, &'static dyn Call)> {
