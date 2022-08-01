@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, f64::consts::PI};
 
-use crate::create_instr_error;
+use crate::{create_instr_error, create_unwrapped_instr_error};
 
 use super::{Reference, InstrError, VM};
 
@@ -314,7 +314,249 @@ impl Call for DebugCall {
     }
 }
 
-pub const CALLS: [&dyn Call; 8] = [&SinCall{}, &CosCall{}, &TanCall{}, &FloorCall{}, &CeilCall{}, &PowCall{}, &SqrtCall{}, &DebugCall{}];
+pub struct CircleCall{}
+impl Call for CircleCall {
+    fn name(&self) -> String {
+        "circle".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        3
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let radius = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        let y = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        let x = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        Ok(Reference::Literal(f64::sqrt(x.powf(2.0) + y.powf(2.0)) - radius))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub struct TranslateCall{}
+impl Call for TranslateCall {
+    fn name(&self) -> String {
+        "translate".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        2
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let offset_x = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let x = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        Ok(Reference::Literal(x-offset_x))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub struct ScaleCall{}
+impl Call for ScaleCall {
+    fn name(&self) -> String {
+        "scale".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        2
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let scale = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let x = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        Ok(Reference::Literal(x/scale))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub struct RotateXCall{}
+impl Call for RotateXCall {
+    fn name(&self) -> String {
+        "rotateX".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        3
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let rotation = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let y= vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let x = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        let rotation = rotation * PI * 2.0 * -1.0;
+        let (sin, cos) = rotation.sin_cos();
+        Ok(Reference::Literal(cos * x + sin * y))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub struct RotateYCall{}
+impl Call for RotateYCall {
+    fn name(&self) -> String {
+        "rotateY".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        3
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let rotation = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let y= vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let x = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?; 
+        let rotation = rotation * PI * 2.0 * -1.0;
+        let (sin, cos) = rotation.sin_cos();
+        Ok(Reference::Literal(cos * y - sin * x))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub struct RectangleCall{}
+impl Call for RectangleCall {
+    fn name(&self) -> String {
+        "rect".to_string()
+    }
+
+    fn argc(&self) -> usize {
+        4
+    }
+
+    fn any_scope(&self) -> bool {
+        true
+    }
+
+    fn takes_str(&self) -> bool {
+        false
+    }
+
+    fn call(&self, vm: &mut VM) -> Result<Reference, InstrError>{
+        let half_y = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let half_x= vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let y = vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let x= vm.expr_stack.pop()
+            .ok_or_else(|| create_unwrapped_instr_error!(vm, "couldn't pop call arg from stack"))?
+            .to_number(0, 0, vm)?;
+        let edge_dist_x    = x.abs() - half_x;
+        let edge_dist_y    = y.abs() - half_y;
+        let outside_distance = f64::sqrt(edge_dist_x.max(0.0).powf(2.0) + edge_dist_y.max(0.0).powf(2.0));
+        let inside_distance = edge_dist_x.max(edge_dist_y).min(0.0);
+        Ok(Reference::Literal(outside_distance + inside_distance))
+
+    }
+
+    fn call_str(&self, _string:&str, vm: &mut VM) -> Result<Reference, InstrError> {
+        create_instr_error!(vm, "doesn't take string")
+    }
+}
+
+pub const CALLS: [&dyn Call; 14] = [
+    &SinCall{}, 
+    &CosCall{}, 
+    &TanCall{}, 
+    &FloorCall{}, 
+    &CeilCall{}, 
+    &PowCall{}, 
+    &SqrtCall{}, 
+    &DebugCall{},
+    &CircleCall{},
+    &TranslateCall{},
+    &ScaleCall{},
+    &RotateXCall{},
+    &RotateYCall{},
+    &RectangleCall{}
+];
 
 pub fn create_call_map() -> HashMap<String, (usize, &'static dyn Call)> {
     let mut map = HashMap::new();
