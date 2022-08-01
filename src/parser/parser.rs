@@ -242,7 +242,8 @@ fn parse_reference(parser: &mut Parser) -> Result<Box<ASTNode>, ParseError> {
         }
     } else {
         Ok(Box::new(ASTNode::new(ASTNodeType::Reference(
-            if matches!(next, Token::Pop) || matches!(next, Token::Peek) {
+            if matches!(next, Token::Pop) || matches!(next, Token::Peek) ||
+                matches!(next, Token::Width) || matches!(next, Token::Height) {
                 next
             } else {
                 parser.tokenizer.seek(fallback);

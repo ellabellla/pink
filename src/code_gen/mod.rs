@@ -746,6 +746,12 @@ fn generate_reference(func: &mut Function, _naming: &mut Naming, node: &Box<ASTN
                 Ok(Reference::Stack)
             }
         },
+        Token::Width => {
+            Ok(Reference::Width)
+        },
+        Token::Height => {
+            Ok(Reference::Height)
+        },
         Token::Matrix => Ok(Reference::Matrix),
         Token::Identifier(_) => {
             if let Ok(pull_through_id) = get_annotation!(node, "", Annotation::PullThrough(_id)) {
@@ -1078,8 +1084,8 @@ centre: 250/2;
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        f: (x:0)->[x];
-        (10)->f!;
+        width,
+        debug|@|;
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));

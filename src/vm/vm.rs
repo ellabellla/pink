@@ -68,6 +68,8 @@ pub enum Reference {
     Argument(usize),
     Heap(usize),
     Matrix,
+    Width,
+    Height,
     None,
 }
 
@@ -105,6 +107,8 @@ impl Reference {
             Reference::None => return Ok(*self),
             Reference::Literal(_) => return Ok(*self),
             Reference::Executable(_, _) => return Ok(*self),
+            Reference::Width => return Ok(*self),
+            Reference::Height => return Ok(*self),
         }
     }
 
@@ -136,6 +140,8 @@ impl Reference {
                 }
                 vm.execute(*argc, *instr_pointer)?.to_number(x, y, vm)
             },
+            Reference::Width => Ok(vm.matrix.width() as f64),
+            Reference::Height => Ok(vm.matrix.height() as f64),
         }
     }
 
@@ -180,6 +186,14 @@ impl Reference {
                     } else {
                         return Ok(Reference::Stack)
                     }
+                },
+                'W' => {
+                    chars.next();
+                    return Ok(Reference::Width)
+                },
+                'L' => {
+                    chars.next();
+                    return Ok(Reference::Height)
                 },
                 'G' => {
                     ref_type = Reference::Global(0);
@@ -247,6 +261,8 @@ impl ToString for Reference {
             Reference::Matrix => String::from("M"),
             Reference::Literal(number) => String::from(format!("{}", number)),
             Reference::Executable(argc, instr_pointer) => String::from(format!("F{},{}", argc, instr_pointer)),
+            Reference::Width => String::from("W"),
+            Reference::Height => String::from("L"),
         }
     }
 }
@@ -1039,6 +1055,8 @@ impl VM {
                                  Reference::None
                              }
                         },
+                        Reference::Width => b,
+                        Reference::Height => b,
                     };
 
                     if !matches!(reference, Reference::None) {

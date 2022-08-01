@@ -49,6 +49,9 @@ token_lookup!(
     ("{", OpenBrace),
     ("}", CloseBrace),
 
+    ("width", Width),
+    ("height", Height),
+
     (String, ListString),
     (f64, Number),
     (String, Identifier),
