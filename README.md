@@ -9,7 +9,7 @@ Pink is currently a work in progress and contains many bugs. Alot of work is nee
 
 ### Factorial
 ```
-fact: (x:0) -> [x=0?( 1; x * (x-1) -> fact)];
+fact: (x:0) -> [x=0?( 1; x * (x-1) -> fact!)];
 debug|(10)->fact|;
 ```
 
@@ -42,7 +42,6 @@ debug|(10)->fib|;
 - more tests
   - unit tests
   - create integration tests
-- tail recursion on `!` when used with function
 - dynamic defaults for scope definition
 
 ## Syntax
@@ -65,7 +64,6 @@ Booleans are just numbers. `0.0` is false and anything is true.
 - `true` is `1.0`
 - `false`  is `0.0`
 
-
 #### Identifiers
 Identifiers are used to refer to [variables](#definitions--variables) or [external calls](#external-calls). They start with a letter or underscore and can contain alphanumeric characters and underscores.
 
@@ -80,6 +78,8 @@ An indexed value is an expression that indexes an element in the output [matrix]
 #### Matrix
 A matrix is used represent the output image of the program. It stores only numbers. All values in the matrix are converted into a scale of `0.0` to `1.0`, `1.0` being pink and `0.0` being black, when the program ends. Then the matrix is outputted as an image.
 - `#` refers to the output matrix
+- `width` refers to its width
+- `height` refers to its height
 
 #### Strings
 Strings are an list of characters surrounded by `"`s, An escape can be used to put special characters in the string. The escapes are:
@@ -127,8 +127,9 @@ Values can be:
 ###### 0if Precedence
 - `not` logical not operator, is a unary operator
   - `not 1` becomes `0.0`
-- `!` return expression result from func or exit program, if used in the global scope
-  - `2+2!` return 4 from func
+- `!` return the result of the expression from the current function, or exit program if used in the global scope
+  - `2+2!` return 4 from current function
+  - when used on an exec in a function, or a reference to an exec in a function, it will call the exec using tail recursion before returning
 
 ###### 1st Precedence
 - `*` multiply
@@ -168,6 +169,8 @@ Variables containing a function can be called by simply using as a value, `func 
 - `()->add` returns `0`
 - `(1)->add` returns `1`
 - `(1,1)->add` returns `2`
+
+Placing a [`!`](#0if-precedence) after an exec will cause it to be called using tail recursion causing the calling function to be replaced. 
 
 ##### Scope Definition
 A scope definition is a list containing expressions and definitions surrounded by `(` and `)` and seperated by `;`. The definitions define the parameters. The expressions define the starting stack values.
@@ -220,6 +223,8 @@ Some external calls can take an optional [string](#strings) as a parameter. The 
 All external calls will resolve to some value.
 
 #### Calls
+
+##### Math
 - `sin`
   - one param
 - `cos`
@@ -232,10 +237,45 @@ All external calls will resolve to some value.
   - one param
 - `sqrt`
   - one param
+
+##### Signed Distance Field Calls (SDF)
+These external calls are used to calculate SDFs. 
+- `circle` calculates SDF of a circle
+  - 3 params
+    - the current pixel x coord
+    - the current pixel y coord
+    - the radius
+- `rect` calculates SDF of a rectangle
+  - 4 params
+    - the current pixel x coord
+    - the current pixel y coord
+    - the width
+    - the height
+- `translate` translates a coordinate
+  - 2 params
+    - the current pixel x/y coord
+    - the offset
+- `scale` scales a coordinate
+  - 2 params
+    - the current pixel x/y coord
+    - the scale
+- `rotateX` rotate the x component of a coordinate
+  - 3 params
+    - the current pixel x coord
+    - the current pixel y coord
+    - the rotation (0.0 no rotation, 1.0 full rotation)
+- `rotateY` rotate the Y component of a coordinate
+  - 3 params
+    - the current pixel x coord
+    - the current pixel y coord
+    - the rotation (0.0 no rotation, 1.0 full rotation)
+- `sdf` takes the output of a SDF and returns the color output
+  - one param
+
+##### Console
 - `debug`
   - one param and optional string
   - prints value to the console
-
 ## License
 
 This software is provided under the MIT license. Click [here](./LICENSE) to view.
