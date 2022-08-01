@@ -847,6 +847,7 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
     let id = get_annotation!(node.children[0], "", Annotation::GlobalId(id))
         .or_else(|_| get_annotation!(node.children[0], "definition requires id", Annotation::Id(id)))?;
 
+    let mut pop = None;
     let reference = {
         let mut rhs = if is_exec {
             let func_id = generate_function(false, func, naming, &node.children[1])?;
@@ -863,7 +864,11 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
             func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), func_id));
             Reference::StackExpr
         } else {
-            generate_expression(func, naming, &node.children[1])?
+            let reference = generate_expression(func, naming, &node.children[1])?;
+            if let Ok(count) = get_annotation!(node.children[1], "", Annotation::StackPop(_count)) {
+                pop = Some(*count);
+            }
+            reference
         };
 
         let lhs = if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
@@ -892,13 +897,20 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
             _ => ()
         }
         
-        if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
+
+        let res = if get_annotation!(node.children[0], "", Annotation::GlobalId(id)).is_ok() {
             func.code.push(Line::Instr(Instr::SetGlobal(*id, rhs)));
             Reference::Global(*id)
         } else {
             func.code.push(Line::Instr(Instr::SetArg(*id, rhs)));
             Reference::Argument(*id)
+        };
+
+        if let Some(count) = pop {
+            func.code.push(Line::Instr(Instr::Pop(count)));
         }
+
+        res
     };
 
     Ok(reference)
@@ -1012,15 +1024,26 @@ centre: 250/2;
         f:(x:10)->[x+10];
         (x:f)->[(3)->x],
         debug|@|;
+
+
+#<-(x:125; y:125)->[
+    @;
+    x-:@;
+    y-:@;
+    rotateY|x;y;1.0|,
+    rotateX|x;y;1.0|,
+    rect|@;@;10;10|,
+    @>0?(1;0)
+];
     */
 
     #[test] 
     fn test() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        f:(x:10)->[x+10];
-        passf:(x:(x:0)->[10])->[(3)->x];
-        ((x:0)->[x+2])->passf,
-        debug|@|;
+        (x:0; y:0)->[
+            x-:@;
+            y-:@;
+        ];
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));
