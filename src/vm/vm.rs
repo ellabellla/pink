@@ -1,5 +1,7 @@
 use std::{collections::{HashMap}, str::{Chars}, fmt, iter::Peekable};
 
+use crate::lexer::TOKEN_STRING_ESCAPE;
+
 use super::{Stack, Data, Matrix, CALLS, ExprStack};
 
 #[macro_use] 
@@ -494,7 +496,7 @@ impl ToString for Instr {
             Instr::ForEach(a, b) => format!("FREH {} {}", a.to_string(), b.to_string()),
             Instr::ForEachRange(a, b, c, d) => format!("FRRG {} {} {} {}", a.to_string(), b.to_string(), c.to_string(), d.to_string()),
             Instr::Call(a) => format!("CALL {}", a.to_string()),
-            Instr::CallStr(a, b) => format!("CALS {} \"{}\"", a.to_string(), b.to_string()),
+            Instr::CallStr(a, b) => format!("CALS {} {}", a.to_string(), string_to_instr_string(b)),
             Instr::Exit => "EXIT".to_string(),
         }
     }
@@ -585,6 +587,23 @@ pub fn parse_usize(chars: &mut Peekable<Chars>) -> Result<usize, InstrError>{
     }
 }
 
+pub fn string_to_instr_string(string: &str) -> String {
+    let chars = string.chars();
+    let mut data = vec!['"'];
+    for mut char in chars {
+        for (escape, escape_char) in TOKEN_STRING_ESCAPE {
+            if char == escape_char {
+                data.push('\\');
+                char = escape;
+                break;
+            }
+        }
+        data.push(char);
+    }
+    data.push('"');
+    data.iter().collect()
+}
+
 pub fn parse_string(chars: &mut Peekable<Chars>) -> Result<String, InstrError>{
     while let Some(c) = chars.peek() {
         if *c == ' ' {
@@ -602,6 +621,21 @@ pub fn parse_string(chars: &mut Peekable<Chars>) -> Result<String, InstrError>{
                 if *c == '"' {
                     chars.next();
                     break;
+                } else if *c == '\\' {
+                    chars.next();
+                    if let Some(c) = chars.next() {
+                        let mut found = false;
+                        for (escape, escape_char) in TOKEN_STRING_ESCAPE {
+                            if c == escape {
+                                data.push(escape_char);
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            return Err(InstrError::new( "couldn't parse string"))
+                        }
+                    }
                 } else {
                     data.push(*c);
                     chars.next();
