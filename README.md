@@ -5,6 +5,12 @@ Pink is a functional stack based programming language. The programming language 
 
 Pink is currently a work in progress and contains many bugs. Alot of work is needed.
 
+## How to use
+
+You can run pink from your browser. No installation is required.
+
+[https://ellabellla.github.io/pink/www/](https://ellabellla.github.io/pink/www/)
+
 ## Examples
 
 ### Factorial
