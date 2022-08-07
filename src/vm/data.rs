@@ -384,8 +384,8 @@ mod tests {
         stack.push(Data::Frame(2, 0, 0));
 
         assert_eq!(stack.stack.len(), 4);
-        assert_eq!(stack.get_arg(0).unwrap(), Reference::Literal(2.0));
-        assert_eq!(stack.get_arg(1).unwrap(), Reference::Literal(1.0));
+        assert_eq!(stack.get_arg(1).unwrap(), Reference::Literal(2.0));
+        assert_eq!(stack.get_arg(0).unwrap(), Reference::Literal(1.0));
 
         assert_eq!(stack.pop(), None);
 
@@ -397,9 +397,9 @@ mod tests {
         stack.push(Data::Frame(3, 0, 0));
 
         assert_eq!(stack.stack.len(), 8);
-        assert_eq!(stack.get_arg(0).unwrap(), Reference::Literal(0.0));
-        assert_eq!(stack.get_arg(1).unwrap(), Reference::Literal(0.0));
-        assert_eq!(stack.get_arg(2).unwrap(), Reference::Literal(3.0));
+        assert_eq!(stack.get_arg(2).unwrap(), Reference::None);
+        assert_eq!(stack.get_arg(1).unwrap(), Reference::None);
+        assert_eq!(stack.get_arg(0).unwrap(), Reference::Literal(3.0));
 
         stack.push(Data::Reference(Reference::Literal(6.0)));
         stack.push(Data::Reference(Reference::Literal(5.0)));

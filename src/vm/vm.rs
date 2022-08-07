@@ -1488,441 +1488,322 @@ mod tests {
 
     #[test]
     fn test_parse_reference() {
+        let reference = Reference::Executable(0, 0);
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let reference = Reference::Executable(0, 0);
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::Stack;
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::StackIndex(1);
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::StackPeek;
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::Literal(0.0);
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::Global(0);
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::Argument(0);
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::Heap(0);
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::Matrix;
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
-        {
-            let reference = Reference::None;
-            let str = reference.to_string();
-            assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let reference = Reference::Stack;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::StackIndex(1);
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::StackExpr;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::StackPeek;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::StackPeekExpr;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Literal(0.0);
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Global(0);
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Argument(0);
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Heap(0);
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Matrix;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Width;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::Height;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
+
+        let reference = Reference::None;
+        let str = reference.to_string();
+        assert_eq!(reference, Reference::from_str(&mut str.chars().peekable()).unwrap());
     }
 
     #[test]
     fn test_parse_instr() {
-        {
-            let instr = Instr::Add(Reference::None, Reference::None);
+        let instr = Instr::Add(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Subtract(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Subtract(Reference::None, Reference::None);
+        let instr = Instr::Multiply(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Divide(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Multiply(Reference::None, Reference::None);
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Equal(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Divide(Reference::None, Reference::None);
+        let instr = Instr::Lesser(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Greater(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            
-        {
-            let instr = Instr::Equal(Reference::None, Reference::None);
+        let instr = Instr::LesserEqual(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::GreaterEqual(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Lesser(Reference::None, Reference::None);
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Not(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Greater(Reference::None, Reference::None);
+        let instr = Instr::And(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Or(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::LesserEqual(Reference::None, Reference::None);
+        let instr = Instr::Xor(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
 
-        {
-            let instr = Instr::GreaterEqual(Reference::None, Reference::None);
+        let instr = Instr::Conditional(Reference::None, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
 
+        let instr = Instr::Push(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Not(Reference::None);
+        let instr = Instr::PushExpr(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Pop(1);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::And(Reference::None, Reference::None);
+        let instr = Instr::PopExpr;
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Duplicate;
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Or(Reference::None, Reference::None);
+        let instr = Instr::DuplicateExpr;
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Get(1);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Xor(Reference::None, Reference::None);
+        let instr = Instr::StartExpr;
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::EndExpr;
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
 
-        {
-            let instr = Instr::Conditional(Reference::None, Reference::None, Reference::None);
+        let instr = Instr::PrintLn(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::PrintLnString("hello".to_string());
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
 
-        {
-            let instr = Instr::Push(Reference::None);
+        let instr = Instr::GetMatrix(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::SetMatrix(Reference::None, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Pop(1);
+        let instr = Instr::GetFlatMatrix(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::SetFlatMatrix(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Duplicate;
+        let instr = Instr::LenMatrix(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::WidthMatrix(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::PrintLn(Reference::None);
+        let instr = Instr::HeightMatrix(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
 
-        {
-            let instr = Instr::PrintLnString("hello".to_string());
+        let instr = Instr::PushFrame(0, 0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::PopInPlace(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
+        let instr = Instr::PushNonJumpFrame(0, 0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::GetMatrix(Reference::None, Reference::None);
+        let instr = Instr::PopFrame(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::GetArg(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::SetMatrix(Reference::None, Reference::None, Reference::None);
+        let instr = Instr::SetArg(0, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
 
-        {
-            let instr = Instr::GetFlatMatrix(Reference::None);
+        let instr = Instr::GetGlobal(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::SetGlobal(0, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::SetFlatMatrix(Reference::None, Reference::None);
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Jump(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::LenMatrix(0);
+        let instr = Instr::JumpEqual(0, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::JumpNotEqual(0, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::WidthMatrix(0);
+        let instr = Instr::JumpLesser(0, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::JumpGreater(0, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::HeightMatrix(0);
+        let instr = Instr::JumpLesserOrEqual(0, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::JumpGreaterOrEqual(0, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
+        let instr = Instr::JumpNotNone(0, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::PushFrame(0, 0);
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::ExecRef(Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::PushNonJumpFrame(0, 0);
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Alloc(0, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::PopFrame(Reference::None);
+        let instr = Instr::Free(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Point(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::GetArg(0);
+        let instr = Instr::SetPoint(0, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
 
-        {
-            let instr = Instr::SetArg(0, Reference::None);
+        let instr = Instr::ReduceRange(Reference::None, Reference::None, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Reduce(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
+        let instr = Instr::Into(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::GetGlobal(0);
+        let instr = Instr::ForEach(Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::ForEachRange(Reference::None, Reference::None, Reference::None, Reference::None);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::SetGlobal(0, Reference::None);
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Call(0);
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-        {
-            let instr = Instr::Jump(0);
+        let instr = Instr::CallStr(0,"hello".to_string());
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
 
-        {
-            let instr = Instr::JumpEqual(0, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::JumpNotEqual(0, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::JumpLesser(0, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::JumpGreater(0, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::JumpLesserOrEqual(0, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::JumpGreaterOrEqual(0, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::JumpNotNone(0, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-
-        {
-            let instr = Instr::ExecRef(Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-
-        {
-            let instr = Instr::Alloc(0, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::Free(0);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::Point(0);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::SetPoint(0, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-
-        {
-            let instr = Instr::ReduceRange(Reference::None, Reference::None, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::Reduce(Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::Into(Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-
-        {
-            let instr = Instr::ForEach(Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-            
-        {
-            let instr = Instr::ForEachRange(Reference::None, Reference::None, Reference::None, Reference::None);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-            
-        {
-            let instr = Instr::Call(0);
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
-            
-        {
-            let instr = Instr::CallStr(0,"hello".to_string());
-
-            let str = instr.to_string();
-            assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
-        }
+        let instr = Instr::Exit;
+        let str = instr.to_string();
+        assert_eq!(instr, Instr::from_str(&mut str.chars().peekable()).unwrap());
 
     }
 }

@@ -1046,46 +1046,17 @@ mod tests {
     use crate::{parser::AbstractSyntaxTree, lexer::Tokenizer, semantic::validate};
 
     use super::Code;
-    /*
-        fac:(x:0) -> [x=0 ? (1;x*(x-1) -> fac)];
-            (10) -> fac,
-
-            centre: 250/2;
-        x:100;
-        y:10;
-        sqrt|pow|125-centre;2| + pow|125-centre;2||,
-        debug|@|;
-        {0;125} <* [@@, sqrt|pow|debug|@|-centre;2| + pow|debug|@|-centre;2||, debug|@|];
-        centre: 250/2;
-{0;125} <* [@@, sqrt|pow|debug|@|-centre;2| + pow|debug|@|-centre;2||, debug|@|];
-centre: 250/2;
-{0;125} <* [@@, sqrt|pow|@-centre;2| + pow|@-centre;2||, debug|@ < 100 ? (1;0)|];
-
- f:(x:())->[x<-[@;@]],
-        (({10}))->f,
-        debug|@|;
-
-        f:(x:10)->[x+10];
-        (x:f)->[(3)->x],
-        debug|@|;
-
-
-#<-(x:125; y:125)->[
-    @;
-    x-:@;
-    y-:@;
-    rotateY|x;y;1.0|,
-    rotateX|x;y;1.0|,
-    rect|@;@;10;10|,
-    @>0?(1;0)
-];
-    */
-
+ 
     #[test] 
-    fn test() {
+    fn test_code_gen() {
         let mut tree = &mut AbstractSyntaxTree::new(&mut Tokenizer::new(r"
-        width,
-        debug|@|;
+        fib: (n:0;i:0;a:0;b:1) -> [
+            n=i?(
+                a!;
+                (n;i+1;b;a+b)->fib!
+            );
+        ];
+        debug|(10)->fib|;
         ")).unwrap();
 
         println!("{}", tree.to_pretty_string(true));

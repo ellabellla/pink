@@ -100,6 +100,17 @@ mod macros {
             }
         };
     }
+
+    #[cfg(test)]
+    macro_rules! assert_semantic_eq {
+        ($input:tt, $output:tt) => {
+            {
+                let mut tree = AbstractSyntaxTree::new(&mut Tokenizer::new($input)).unwrap();
+                validate(&mut tree).unwrap();
+                assert_eq!(tree.to_string(true), $output);
+            }
+        };
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -359,7 +370,7 @@ fn validate_definition(data: &mut SemanticData, node: &mut Box<ASTNode>, pull_th
     }
 
     let value = match node.children[1].node_type {
-        ASTNodeType::ExpressionList(_) => validate_exec( false, data, &mut node.children[1]),
+        ASTNodeType::ExpressionList(_) => validate_expression_list(data, &mut node.children[1]),
         ASTNodeType::Exec => validate_exec( false, data, &mut node.children[1]),
         ASTNodeType::Reduce => validate_extended_exec(false, data, &mut node.children[1]),
         ASTNodeType::ForEach => validate_extended_exec(false, data, &mut node.children[1]),
@@ -874,11 +885,50 @@ mod tests {
             var2: 2*2;
             var2: 4;
             var3: (1; x:2; y:1) -> [(y) -> [1]];
+            var3;
             2* 2 ? (2; 2);
 
         ")).unwrap();
 
         assert_eq!(validate(&mut tree), Ok(()));
-        println!("{}", tree.to_pretty_string(true));
+        assert_eq!(tree.to_string(true), "((((Reference(Identifier(\"var1\")){DebugInfo(1, 18), GlobalId(0)})(Number(10.0){DebugInfo(1, 21)})Set(Set){DebugInfo(1, 18)})Statement(Throw){DebugInfo(1, 22)})((Reference(Identifier(\"var1\")){DebugInfo(2, 17), GlobalId(0)})Statement(Throw){DebugInfo(2, 18)})(((Reference(Identifier(\"var2\")){DebugInfo(3, 18), GlobalId(1)})((Number(2.0){DebugInfo(3, 20)})(Number(2.0){DebugInfo(3, 22)})Operator(Multiply){DebugInfo(3, 21)})Set(Set){DebugInfo(3, 18)})Statement(Throw){DebugInfo(3, 23)})(((Reference(Identifier(\"var2\")){DebugInfo(4, 18), GlobalId(1)})(Number(4.0){DebugInfo(4, 20)})Set(Set){DebugInfo(4, 18)})Statement(Throw){DebugInfo(4, 21)})(((Reference(Identifier(\"var3\")){DebugInfo(5, 18), GlobalId(2), Argc(2), Executable})(((Number(1.0){DebugInfo(5, 21)})(Throw{DebugInfo(5, 22)})((Reference(Identifier(\"x\")){DebugInfo(5, 24), Id(0)})(Number(2.0){DebugInfo(5, 26)})Set(Set){DebugInfo(5, 22)})(Throw{DebugInfo(5, 27)})((Reference(Identifier(\"y\")){DebugInfo(5, 29), Id(1)})(Number(1.0){DebugInfo(5, 31)})Set(Set){DebugInfo(5, 27)})Tuple(3){DebugInfo(5, 32)})((((Reference(Identifier(\"y\")){DebugInfo(5, 39), PullThrough(1)})Tuple(1){DebugInfo(5, 40)})((Number(1.0){DebugInfo(5, 46)})ExpressionList(1){DebugInfo(5, 47)})Exec{DebugInfo(5, 47), Argc(0), Scope(0)})ExpressionList(1){DebugInfo(5, 48)})Exec{DebugInfo(5, 48), Argc(2), Scope(2)})Set(Set){DebugInfo(5, 18)})Statement(Throw){DebugInfo(5, 49)})((Reference(Identifier(\"var3\")){DebugInfo(6, 17), Executable, GlobalId(2), Argc(2)})Statement(Throw){DebugInfo(6, 18)})((((Number(2.0){DebugInfo(7, 14)})(Number(2.0){DebugInfo(7, 17)})Operator(Multiply){DebugInfo(7, 15)})((Number(2.0){DebugInfo(7, 22)})(Throw{DebugInfo(7, 23)})(Number(2.0){DebugInfo(7, 25)})Tuple(2){DebugInfo(7, 26)})Operator(If){DebugInfo(7, 19)})Statement(Throw){DebugInfo(7, 27)})Root{DebugInfo(0, 0), Scope(3)})");
     }
+
+    #[test]
+    fn test_semantic_definition_reference() {
+        assert_semantic_eq!("var1:10;var1*2;", "((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0)})(Number(10.0){DebugInfo(0, 7)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 8)})(((Reference(Identifier(\"var1\")){DebugInfo(0, 12), GlobalId(0)})(Number(2.0){DebugInfo(0, 14)})Operator(Multiply){DebugInfo(0, 13)})Statement(Throw){DebugInfo(0, 15)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1:(x:2)->[x+10];var1*2;", "((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0), Argc(1), Executable})((((Reference(Identifier(\"x\")){DebugInfo(0, 7), Id(0)})(Number(2.0){DebugInfo(0, 9)})Set(Set){DebugInfo(0, 6)})Tuple(1){DebugInfo(0, 10)})(((Reference(Identifier(\"x\")){DebugInfo(0, 14), Id(0)})(Number(10.0){DebugInfo(0, 17)})Operator(Add){DebugInfo(0, 15)})ExpressionList(1){DebugInfo(0, 18)})Exec{DebugInfo(0, 18), Argc(1), Scope(1)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 19)})(((Reference(Identifier(\"var1\")){DebugInfo(0, 23), Executable, GlobalId(0), Argc(1)})(Number(2.0){DebugInfo(0, 25)})Operator(Multiply){DebugInfo(0, 24)})Statement(Throw){DebugInfo(0, 26)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1: [10,10,@+@];", "((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0), Argc(0), ExpressionList})((Number(10.0){DebugInfo(0, 9)})(Push{DebugInfo(0, 10)})(Number(10.0){DebugInfo(0, 12)})(Push{DebugInfo(0, 13)})((Reference(Pop){DebugInfo(0, 14), StackIndex(0)})(Reference(Pop){DebugInfo(0, 16), StackIndex(1)})Operator(Add){DebugInfo(0, 15), StackPop(2)})ExpressionList(3){DebugInfo(0, 17)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 18)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1:#<-[10]; var1*2;","((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0), Argc(0), Executable})((Matrix{DebugInfo(0, 6)})((Number(10.0){DebugInfo(0, 11)})ExpressionList(1){DebugInfo(0, 12), Scope(0)})Into{DebugInfo(0, 12)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 13)})(((Reference(Identifier(\"var1\")){DebugInfo(0, 18), Executable, GlobalId(0), Argc(0)})(Number(2.0){DebugInfo(0, 20)})Operator(Multiply){DebugInfo(0, 19)})Statement(Throw){DebugInfo(0, 21)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1:#<*[10]; var1*2;","((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0), Argc(0), Executable})((Matrix{DebugInfo(0, 6)})((Number(10.0){DebugInfo(0, 11)})ExpressionList(1){DebugInfo(0, 12), Scope(0)})ForEach{DebugInfo(0, 12)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 13)})(((Reference(Identifier(\"var1\")){DebugInfo(0, 18), Executable, GlobalId(0), Argc(0)})(Number(2.0){DebugInfo(0, 20)})Operator(Multiply){DebugInfo(0, 19)})Statement(Throw){DebugInfo(0, 21)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1:#*>[10]; var1*2;","((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0), Argc(0), Executable})((Matrix{DebugInfo(0, 6)})((Number(10.0){DebugInfo(0, 11)})ExpressionList(1){DebugInfo(0, 12), Scope(0)})Reduce{DebugInfo(0, 12)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 13)})(((Reference(Identifier(\"var1\")){DebugInfo(0, 18), Executable, GlobalId(0), Argc(0)})(Number(2.0){DebugInfo(0, 20)})Operator(Multiply){DebugInfo(0, 19)})Statement(Throw){DebugInfo(0, 21)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1:(x:10)->[var1];", "((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0), Argc(1), Executable})((((Reference(Identifier(\"x\")){DebugInfo(0, 7), Id(0)})(Number(10.0){DebugInfo(0, 10)})Set(Set){DebugInfo(0, 6)})Tuple(1){DebugInfo(0, 11)})((Reference(Identifier(\"var1\")){DebugInfo(0, 18), Executable, GlobalId(0), Argc(1)})ExpressionList(1){DebugInfo(0, 19)})Exec{DebugInfo(0, 19), Argc(1), Scope(1)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 20)})Root{DebugInfo(0, 0), Scope(1)})");
+        assert_semantic_eq!("var1:10*2;", "((((Reference(Identifier(\"var1\")){DebugInfo(0, 5), GlobalId(0)})((Number(10.0){DebugInfo(0, 7)})(Number(2.0){DebugInfo(0, 9)})Operator(Multiply){DebugInfo(0, 8)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 10)})Root{DebugInfo(0, 0), Scope(1)})");
+    }
+
+
+    #[test]
+    fn test_semantic_expression() {
+        assert_semantic_eq!("1+@*3;10+2/@;20;", "((((Number(1.0){DebugInfo(0, 1)})((Reference(Pop){DebugInfo(0, 3), StackIndex(0)})(Number(3.0){DebugInfo(0, 5)})Operator(Multiply){DebugInfo(0, 4)})Operator(Add){DebugInfo(0, 2), StackPop(1)})Statement(Throw){DebugInfo(0, 6)})(((Number(10.0){DebugInfo(0, 8)})((Number(2.0){DebugInfo(0, 10)})(Reference(Pop){DebugInfo(0, 12), StackIndex(0)})Operator(Divide){DebugInfo(0, 11)})Operator(Add){DebugInfo(0, 9), StackPop(1)})Statement(Throw){DebugInfo(0, 13)})((Number(20.0){DebugInfo(0, 15)})Statement(Throw){DebugInfo(0, 16)})Root{DebugInfo(0, 0), Scope(0)})");
+    }
+
+    #[test]
+    fn test_semantic_tail_recursion() {
+        assert_semantic_eq!("10*10!;", "((((Number(10.0){DebugInfo(0, 2)})(Number(10.0){DebugInfo(0, 5)})Operator(Multiply){DebugInfo(0, 3), Exit})Statement(Throw){DebugInfo(0, 7)})Root{DebugInfo(0, 0), Scope(0)})");
+        assert_semantic_eq!("()->[10*10!];", "((((Tuple(0){DebugInfo(0, 2)})(((Number(10.0){DebugInfo(0, 7)})(Number(10.0){DebugInfo(0, 10)})Operator(Multiply){DebugInfo(0, 8), Return})ExpressionList(1){DebugInfo(0, 12)})Exec{DebugInfo(0, 12), Argc(0), Scope(0)})Statement(Throw){DebugInfo(0, 13)})Root{DebugInfo(0, 0), Scope(0)})");
+        assert_semantic_eq!("func:()->[10]; ()->[func!; ()->func!];", "((((Reference(Identifier(\"func\")){DebugInfo(0, 5), GlobalId(0), Argc(0), Executable})((Tuple(0){DebugInfo(0, 7)})((Number(10.0){DebugInfo(0, 12)})ExpressionList(1){DebugInfo(0, 13)})Exec{DebugInfo(0, 13), Argc(0), Scope(0)})Set(Set){DebugInfo(0, 5)})Statement(Throw){DebugInfo(0, 14)})(((Tuple(0){DebugInfo(0, 17)})((Reference(Identifier(\"func\")){DebugInfo(0, 24), Return, Executable, GlobalId(0), Argc(0)})(Throw{DebugInfo(0, 26)})(((Tuple(0){DebugInfo(0, 29)})(Reference(Identifier(\"func\")){DebugInfo(0, 35), Argc(0), GlobalId(0)})Exec{DebugInfo(0, 35), Argc(0), Scope(0)})TailExec{DebugInfo(0, 36)})ExpressionList(2){DebugInfo(0, 37)})Exec{DebugInfo(0, 37), Argc(0), Scope(0)})Statement(Throw){DebugInfo(0, 38)})Root{DebugInfo(0, 0), Scope(1)})");
+    }
+
+    #[test]
+    fn test_semantic_exec() {
+        assert_semantic_eq!("(x:10)->[x];", "((((((Reference(Identifier(\"x\")){DebugInfo(0, 2), Id(0)})(Number(10.0){DebugInfo(0, 5)})Set(Set){DebugInfo(0, 1)})Tuple(1){DebugInfo(0, 6)})((Reference(Identifier(\"x\")){DebugInfo(0, 10), Id(0)})ExpressionList(1){DebugInfo(0, 11)})Exec{DebugInfo(0, 11), Argc(1), Scope(1)})Statement(Throw){DebugInfo(0, 12)})Root{DebugInfo(0, 0), Scope(0)})");
+    }
+
+    #[test]
+    fn test_semantic_exec_extended() {
+        assert_semantic_eq!("#<-[10];", "((((Matrix{DebugInfo(0, 1)})((Number(10.0){DebugInfo(0, 6)})ExpressionList(1){DebugInfo(0, 7), Scope(0)})Into{DebugInfo(0, 7)})Statement(Throw){DebugInfo(0, 8)})Root{DebugInfo(0, 0), Scope(0)})");
+        assert_semantic_eq!("{0;10;2}<*[@];", "(((((Number(0.0){DebugInfo(0, 2)})(Number(10.0){DebugInfo(0, 5)})(Number(2.0){DebugInfo(0, 7)})RangeComplex{DebugInfo(0, 8)})((Reference(Pop){DebugInfo(0, 12), StackIndex(0), StackPop(1)})ExpressionList(1){DebugInfo(0, 13), Scope(0)})ForEach{DebugInfo(0, 13)})Statement(Throw){DebugInfo(0, 14)})Root{DebugInfo(0, 0), Scope(0)})");
+        assert_semantic_eq!("{0;10;2}*>[@];", "(((((Number(0.0){DebugInfo(0, 2)})(Number(10.0){DebugInfo(0, 5)})(Number(2.0){DebugInfo(0, 7)})RangeComplex{DebugInfo(0, 8)})((Reference(Pop){DebugInfo(0, 12), StackIndex(0), StackPop(1)})ExpressionList(1){DebugInfo(0, 13), Scope(0)})Reduce{DebugInfo(0, 13)})Statement(Throw){DebugInfo(0, 14)})Root{DebugInfo(0, 0), Scope(0)})");
+    }
+
 }

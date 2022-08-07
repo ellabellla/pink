@@ -104,8 +104,13 @@ mod tests {
     #[test]
     fn test_full() {
         let program = compile(r"
-        func:{0;10}<*[x;@; @;@],
-        debug|@|;
+        fib: (n:0;i:0;a:0;b:1) -> [
+            n=i?(
+                a!;
+                (n;i+1;b;a+b)->fib!
+            );
+        ];
+        (10)->fib;
         ").unwrap();
         run(program, 250, 250).unwrap();
     }
