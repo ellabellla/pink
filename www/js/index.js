@@ -1,22 +1,24 @@
 import init, {compile, Compiled, run} from "../../pkg/pink.js";
+
+let compileButton = document.getElementById("compile-button");
+compileButton.disabled = true;
+let runButton = document.getElementById("run-button");
+runButton.disabled = true;
+
+let code = document.getElementById("code");
+let asm = document.getElementById("asm");
+let prettyAsm = document.getElementById("pretty-asm");
+let asmStart = document.getElementById("asm-start");
+let asmGlobals = document.getElementById("asm-globals");
+let outputCanvas = document.getElementById("output-canvas");
+var ctx = outputCanvas.getContext("2d");
+let outputConsole = document.getElementById("output-console");
+
+const width = outputCanvas.width;
+const height = outputCanvas.height;
+
 init()
     .then(() => {
-        let compileButton = document.getElementById("compile-button");
-        let runButton = document.getElementById("run-button");
-
-        let code = document.getElementById("code");
-        let asm = document.getElementById("asm");
-        let prettyAsm = document.getElementById("pretty-asm");
-        let asmStart = document.getElementById("asm-start");
-        let asmGlobals = document.getElementById("asm-globals");
-        let outputCanvas = document.getElementById("output-canvas");
-        var ctx = outputCanvas.getContext("2d");
-        let outputConsole = document.getElementById("output-console");
-        
-
-        const width = outputCanvas.width;
-        const height = outputCanvas.height;
-
         compileButton.addEventListener("click", (event) => {
             outputConsole.value = "";
             prettyAsm.value = "";
@@ -44,26 +46,33 @@ init()
             }
 
             outputConsole.value = "";
+            const program =new Compiled(asm.value, prettyAsm.value, Number.parseInt(asmStart.innerHTML), Number.parseInt(asmGlobals.innerHTML));
+            runButton.disabled = true;
+            run_program(program, width, height).finally(() => {
+                runButton.disabled = false;
+            });
+        });
 
-            try {
-                const width = outputCanvas.width;
-                const height = outputCanvas.height;
-                const matrix = run(
-                        new Compiled(asm.value, prettyAsm.value, Number.parseInt(asmStart.innerHTML), Number.parseInt(asmGlobals.innerHTML)),
-                        width,
-                        height
-                    );
-                const data = new Uint8ClampedArray(matrix.memory); 
-                const image = new ImageData(data, width, height);
-
-                ctx.putImageData(image, 0, 0);
-                ctx.imageSmootingEnabled = false;
-                ctx.globalCompositeOperation = "copy";
-                ctx.drawImage(outputCanvas, 0, 0, width, height);
-            } catch(err) {
-                ctx.clearRect(0, 0, width, height);
-                outputConsole.value = `ERROR:\n${err}`;
-            }
-        })
-        
+        compileButton.disabled = false;     
+        runButton.disabled = false;   
     });
+
+    async function run_program(program, width, height) {
+        try {
+            const matrix = run(
+                    program,
+                    width,
+                    height
+                );
+            const data = new Uint8ClampedArray(matrix.memory); 
+            const image = new ImageData(data, width, height);
+
+            ctx.putImageData(image, 0, 0);
+            ctx.imageSmootingEnabled = false;
+            ctx.globalCompositeOperation = "copy";
+            ctx.drawImage(outputCanvas, 0, 0, width, height);
+        } catch(err) {
+            ctx.clearRect(0, 0, width, height);
+            outputConsole.value = `ERROR:\n${err}`;
+        }
+    }
