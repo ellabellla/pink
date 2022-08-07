@@ -908,7 +908,7 @@ fn generate_definition(func: &mut Function, naming: &mut Naming, node: &Box<ASTN
             func.code.push(Line::ExecRef(Instr::PushExpr(Reference::None), func_id));
             Reference::StackExpr
         } else {
-            let reference = generate_expression(func, naming, &node.children[1])?;
+            let reference = generate_expression_helper(func, naming, &node.children[1])?;
             if let Ok(count) = get_annotation!(node.children[1], "", Annotation::StackPop(_count)) {
                 pop = Some(*count);
             }
