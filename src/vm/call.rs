@@ -572,7 +572,7 @@ impl Call for SDFCall {
     }
 }
 
-pub const CALLS: [&dyn Call; 15] = [
+pub const CALLS: [&dyn Call; 16] = [
     &SinCall{}, 
     &CosCall{}, 
     &TanCall{}, 
@@ -580,6 +580,7 @@ pub const CALLS: [&dyn Call; 15] = [
     &CeilCall{}, 
     &PowCall{}, 
     &SqrtCall{}, 
+    &ABSCall{},
     &DebugCall{},
     &CircleCall{},
     &TranslateCall{},
