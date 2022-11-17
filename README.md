@@ -15,7 +15,7 @@ You can run pink from your browser. No installation is required.
 
 ### Factorial
 ```
-fact: (x:0) -> [x=0?( 1; x * (x-1) -> fact!)];
+fact: (x:0) -> [x=0?( 1; x * (x-1) -> fact)];
 debug|(10)->fact|;
 ```
 
